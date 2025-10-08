@@ -118,6 +118,10 @@ class user {
     }
 
     protected function build_row_for_user(int $userid): ?array {
+        global $CFG;
+        // Ensure grade libs are loaded in runtime context.
+        require_once($CFG->dirroot . '/grade/lib.php');
+        require_once($CFG->libdir . '/gradelib.php');
         $user = \core_user::get_user($userid, 'id, firstname, lastname, email', MUST_EXIST);
         $grades = \grade_get_course_grades($this->course->id, $user->id);
         $gradeval = '-';
