@@ -58,7 +58,7 @@ class user {
         if (!empty($this->user->id)) {
             $rows[] = $this->build_row_for_user($this->user->id);
         } else {
-            $enrolled = get_enrolled_users($this->context, '', 0, 'u.id');
+            $enrolled = \get_enrolled_users($this->context, '', 0, 'u.id');
             foreach ($enrolled as $u) {
                 $rows[] = $this->build_row_for_user($u->id);
             }
@@ -87,7 +87,7 @@ class user {
 
         $table = new \flexible_table('gradereport-user-table');
         $table->define_columns(['fullname', 'email', 'grade']);
-        $table->define_headers([get_string('fullname'), get_string('email'), get_string('grade')]);
+        $table->define_headers([\get_string('fullname'), \get_string('email'), \get_string('grade')]);
         $table->define_baseurl(new \moodle_url('/grade/report/user/index.php', ['id' => $this->course->id]));
         $table->setup();
 
@@ -118,11 +118,11 @@ class user {
 
     protected function build_row_for_user(int $userid): ?array {
         $user = \core_user::get_user($userid, 'id, firstname, lastname, email', MUST_EXIST);
-        $grades = grade_get_course_grades($this->course->id, $user->id);
+        $grades = \grade_get_course_grades($this->course->id, $user->id);
         $gradeval = '-';
         if (!empty($grades) && isset($grades->grades[$user->id])) {
             $gradeval = $grades->grades[$user->id]->str_long_grade;
         }
-        return [fullname($user), $user->email, $gradeval];
+        return [\fullname($user), $user->email, $gradeval];
     }
 }
