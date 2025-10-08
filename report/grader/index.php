@@ -412,7 +412,8 @@ if ($export === 'csv') {
     // Competencies achieved count for course.
     $competencies = [];
     if ($DB->get_manager()->table_exists('competency_usercompcourse')) {
-        $competencies = $DB->get_records_sql("SELECT userid, COUNT(1) cnt, MAX(timeproficient) tprof, MAX(timemodified) tmod
+        // Use reviewtime as a proxy for achieved date and timemodified for last updated.
+        $competencies = $DB->get_records_sql("SELECT userid, COUNT(1) cnt, MAX(reviewtime) achieved, MAX(timemodified) lastupdated
                                                 FROM {competency_usercompcourse}
                                                WHERE courseid = :courseid AND userid $usql AND proficiency = 1
                                             GROUP BY userid", $uparams + ['courseid' => $courseid]);
@@ -484,8 +485,8 @@ if ($export === 'csv') {
         $bd = $badges[$uid]->cnt ?? 0;
         $cp = $competencies[$uid]->cnt ?? 0;
         $cpprof = $cp > 0 ? 'Y' : 'N';
-        $cdate = isset($competencies[$uid]->tprof) && $competencies[$uid]->tprof ? userdate($competencies[$uid]->tprof, get_string('strftimedatetimeshort')) : '';
-        $clu = isset($competencies[$uid]->tmod) && $competencies[$uid]->tmod ? userdate($competencies[$uid]->tmod, get_string('strftimedatetimeshort')) : '';
+        $cdate = isset($competencies[$uid]->achieved) && $competencies[$uid]->achieved ? userdate($competencies[$uid]->achieved, get_string('strftimedatetimeshort')) : '';
+        $clu = isset($competencies[$uid]->lastupdated) && $competencies[$uid]->lastupdated ? userdate($competencies[$uid]->lastupdated, get_string('strftimedatetimeshort')) : '';
         $frich = $feedbackrich[$uid] ?? 'N';
         fputcsv($out, [
             $fullname,
