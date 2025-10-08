@@ -148,6 +148,23 @@ if ($export === 'csv') {
         }
     }
 
+    // Course completion percent (0 or 100 based on core completion record).
+    $coursecompletion = array_fill_keys($userids, 0);
+    if (!empty($course->enablecompletion)) {
+        list($usqlcc, $uparamscc) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'ucc');
+        $ccs = $DB->get_records_sql("SELECT userid, timecompleted FROM {course_completions} WHERE course = :cid AND userid $usqlcc",
+            ['cid' => $courseid] + $uparamscc);
+        foreach ($ccs as $row) {
+            $coursecompletion[(int)$row->userid] = !empty($row->timecompleted) ? 100 : 0;
+        }
+    }
+
+    // Modules unlocked (visible & trackable count) — same for all users.
+    $modulesunlocked = (int)$DB->get_field_sql(
+        "SELECT COUNT(1) FROM {course_modules} WHERE course = :courseid AND visible = 1 AND completion > 0",
+        ['courseid' => $courseid]
+    );
+
     // Overdue activities count: assign and quiz not completed and due date passed.
     $overdue = array_fill_keys($userids, 0);
     // Assign due dates.
@@ -223,8 +240,13 @@ if ($export === 'csv') {
         $grades = $DB->get_records_sql("SELECT userid, quiz, grade FROM {quiz_grades} WHERE userid $usqll AND quiz $qsql", $uparamsl + $qparams);
         // Attempts count and avg time.
         $attempts = $DB->get_records_sql("SELECT userid, quiz, COUNT(1) cnt, AVG(NULLIF(timefinish - timestart,0)) avgdur FROM {quiz_attempts} WHERE userid $usqll AND quiz $qsql AND state='finished' GROUP BY userid, quiz", $uparamsl + $qparams);
+        // First attempt accuracy per quiz (attempt=1 finished).
+        $firstacc = $DB->get_records_sql("SELECT userid, quiz, AVG(NULLIF(sumgrades,0)) sumgrades FROM {quiz_attempts} WHERE userid $usqll AND quiz $qsql AND state='finished' AND attempt = 1 GROUP BY userid, quiz", $uparamsl + $qparams);
+        // Allowed attempts per quiz (0 = unlimited).
+        $allowed = [];
+        foreach ($quizzes as $qid => $q) { $allowed[$qid] = (int)$q->attempts; }
         foreach ($userids as $uid) {
-            $bestpct = 0; $attemptsused = 0; $avgtime = 0; $quizcount = 0;
+            $bestpct = 0; $attemptsused = 0; $avgtime = 0; $quizcount = 0; $firstaccpct = 0; $ratioacc = 0; $ratioct = 0;
             foreach ($quizzes as $qid => $q) {
                 $quizcount++;
                 $gkey = $uid . '-' . $qid;
@@ -241,6 +263,17 @@ if ($export === 'csv') {
                     if ((int)$at->userid === (int)$uid && (int)$at->quiz === (int)$qid) {
                         $attemptsused += (int)$at->cnt;
                         $avgtime += (int)$at->avgdur;
+                        // Attempts used / allowed ratio (only for limited quizzes).
+                        $allow = $allowed[$qid] ?? 0;
+                        if ($allow > 0) { $ratioacc += min((int)$at->cnt, $allow) / $allow; $ratioct++; }
+                        break;
+                    }
+                }
+                foreach ($firstacc as $fa) {
+                    if ((int)$fa->userid === (int)$uid && (int)$fa->quiz === (int)$qid) {
+                        if ($q->sumgrades > 0) {
+                            $firstaccpct += round((($fa->sumgrades ?? 0) / $q->sumgrades) * 100, 1);
+                        }
                         break;
                     }
                 }
@@ -248,8 +281,16 @@ if ($export === 'csv') {
             if ($quizcount > 0) {
                 $bestpct = round($bestpct / $quizcount, 1);
                 $avgtime = round($avgtime / $quizcount, 0);
+                $firstaccpct = round($firstaccpct / $quizcount, 1);
             }
-            $quizstats[$uid] = (object)['bestpct' => $bestpct, 'attempts' => $attemptsused, 'avgtime' => $avgtime];
+            $attemptsratio = $ratioct ? round(($ratioacc / $ratioct) * 100, 1) : 0;
+            $quizstats[$uid] = (object)[
+                'bestpct' => $bestpct,
+                'attempts' => $attemptsused,
+                'avgtime' => $avgtime,
+                'firstacc' => $firstaccpct,
+                'attemptsratio' => $attemptsratio
+            ];
         }
     }
 
@@ -325,10 +366,23 @@ if ($export === 'csv') {
     // Competencies achieved count for course.
     $competencies = [];
     if ($DB->get_manager()->table_exists('competency_usercompcourse')) {
-        $competencies = $DB->get_records_sql("SELECT userid, COUNT(1) cnt
+        $competencies = $DB->get_records_sql("SELECT userid, COUNT(1) cnt, MAX(timeproficient) tprof, MAX(timemodified) tmod
                                                 FROM {competency_usercompcourse}
                                                WHERE courseid = :courseid AND userid $usql AND proficiency = 1
                                             GROUP BY userid", $uparams + ['courseid' => $courseid]);
+    }
+
+    // Feedback richness (assign): presence of any comments feedback.
+    $feedbackrich = array_fill_keys($userids, 'N');
+    if ($DB->get_manager()->table_exists('assignfeedback_comments') && $DB->get_manager()->table_exists('assign_grades')) {
+        $sql = "SELECT ag.userid, COUNT(af.id) cnt
+                  FROM {assignfeedback_comments} af
+                  JOIN {assign_grades} ag ON ag.id = af.grade
+                  JOIN {assign} a ON a.id = ag.assignment AND a.course = :courseid
+                 WHERE ag.userid $usql
+              GROUP BY ag.userid";
+        $fb = $DB->get_records_sql($sql, ['courseid' => $courseid] + $uparams);
+        foreach ($fb as $row) { $feedbackrich[(int)$row->userid] = ((int)$row->cnt > 0) ? 'Y' : 'N'; }
     }
 
     $filename = 'grader_export_' . $courseid . '_' . time() . '.csv';
@@ -343,20 +397,28 @@ if ($export === 'csv') {
         get_string('email'),
         get_string('csv_loginscount', 'gradereport_grader'),
         get_string('csv_activedays', 'gradereport_grader'),
+        get_string('csv_coursecompletion', 'gradereport_grader'),
+        get_string('csv_modulesunlocked', 'gradereport_grader'),
         get_string('lastcourseaccess', 'gradereport_grader'),
         get_string('lastlogin', 'gradereport_grader'),
         get_string('activitiescompleted', 'gradereport_grader'),
         get_string('csv_overduecount', 'gradereport_grader'),
+        get_string('csv_quiz_firstacc', 'gradereport_grader'),
         get_string('csv_quiz_bestpct', 'gradereport_grader'),
         get_string('csv_quiz_attempts', 'gradereport_grader'),
+        get_string('csv_quiz_attemptsratio', 'gradereport_grader'),
         get_string('csv_quiz_avgtime', 'gradereport_grader'),
         get_string('csv_assign_avgpct', 'gradereport_grader'),
         get_string('csv_assign_ontimepct', 'gradereport_grader'),
         get_string('csv_assign_resub', 'gradereport_grader'),
+        get_string('csv_assign_feedbackrich', 'gradereport_grader'),
         get_string('csv_forum_posts', 'gradereport_grader'),
         get_string('csv_forum_replies', 'gradereport_grader'),
         get_string('csv_badges', 'gradereport_grader'),
         get_string('csv_competencies', 'gradereport_grader'),
+        get_string('csv_competency_proficiency', 'gradereport_grader'),
+        get_string('csv_competency_achieveddate', 'gradereport_grader'),
+        get_string('csv_competency_lastupdated', 'gradereport_grader'),
     ]);
 
     foreach ($users as $u) {
@@ -369,13 +431,44 @@ if ($export === 'csv') {
         $ll = empty($u->lastlogin) ? '' : userdate($u->lastlogin, get_string('strftimedatetimeshort'));
         $acpct = isset($completedpct[$uid]) ? $completedpct[$uid] : 0;
         $od = isset($overdue[$uid]) ? $overdue[$uid] : 0;
-        $q = $quizstats[$uid] ?? (object)['bestpct' => 0, 'attempts' => 0, 'avgtime' => 0];
+        $q = $quizstats[$uid] ?? (object)['bestpct' => 0, 'attempts' => 0, 'avgtime' => 0, 'firstacc' => 0, 'attemptsratio' => 0];
         $a = $assignstats[$uid] ?? (object)['avggradepct' => 0, 'ontime' => 0, 'resub' => 0];
         $fp = $forumposts[$uid]->posts ?? 0;
         $fr = $forumposts[$uid]->replies ?? 0;
         $bd = $badges[$uid]->cnt ?? 0;
         $cp = $competencies[$uid]->cnt ?? 0;
-        fputcsv($out, [$fullname, $email, $lc, $ad, $lca, $ll, $acpct, $od, $q->bestpct, $q->attempts, $q->avgtime, $a->avggradepct, $a->ontime, $a->resub, $fp, $fr, $bd, $cp]);
+        $cpprof = $cp > 0 ? 'Y' : 'N';
+        $cdate = isset($competencies[$uid]->tprof) && $competencies[$uid]->tprof ? userdate($competencies[$uid]->tprof, get_string('strftimedatetimeshort')) : '';
+        $clu = isset($competencies[$uid]->tmod) && $competencies[$uid]->tmod ? userdate($competencies[$uid]->tmod, get_string('strftimedatetimeshort')) : '';
+        $frich = $feedbackrich[$uid] ?? 'N';
+        fputcsv($out, [
+            $fullname,
+            $email,
+            $lc,
+            $ad,
+            $coursecompletion[$uid] ?? 0,
+            $modulesunlocked,
+            $lca,
+            $ll,
+            $acpct,
+            $od,
+            $q->firstacc,
+            $q->bestpct,
+            $q->attempts,
+            $q->attemptsratio,
+            $q->avgtime,
+            $a->avggradepct,
+            $a->ontime,
+            $a->resub,
+            $frich,
+            $fp,
+            $fr,
+            $bd,
+            $cp,
+            $cpprof,
+            $cdate,
+            $clu
+        ]);
     }
     fclose($out);
     exit;
