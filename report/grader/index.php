@@ -282,7 +282,7 @@ if ($export === 'csv') {
         // Attempts count and avg time.
         $attempts = $DB->get_records_sql("SELECT userid, quiz, COUNT(1) cnt, AVG(NULLIF(timefinish - timestart,0)) avgdur FROM {quiz_attempts} WHERE userid $usqll AND quiz $qsql AND state='finished' GROUP BY userid, quiz", $uparamsl + $qparams);
         // First attempt accuracy per quiz (attempt=1 finished).
-        $firstacc = $DB->get_records_sql("SELECT userid, quiz, AVG(NULLIF(sumgrades,0)) sumgrades FROM {quiz_attempts} WHERE userid $usqll AND quiz $qsql AND state='finished' AND attempt = 1 GROUP BY userid, quiz", $uparamsl + $qparams);
+        $firstacc = $DB->get_records_sql("SELECT userid, quiz, AVG(NULLIF(sumgrades,0)) avg_sumgrades FROM {quiz_attempts} WHERE userid $usqll AND quiz $qsql AND state='finished' AND attempt = 1 GROUP BY userid, quiz", $uparamsl + $qparams);
         // Allowed attempts per quiz (0 = unlimited).
         $allowed = [];
         foreach ($quizzes as $qid => $q) { $allowed[$qid] = (int)$q->attempts; }
@@ -313,7 +313,7 @@ if ($export === 'csv') {
                 foreach ($firstacc as $fa) {
                     if ((int)$fa->userid === (int)$uid && (int)$fa->quiz === (int)$qid) {
                         if ($q->sumgrades > 0) {
-                            $firstaccpct += round((($fa->sumgrades ?? 0) / $q->sumgrades) * 100, 1);
+                            $firstaccpct += round((($fa->avg_sumgrades ?? 0) / $q->sumgrades) * 100, 1);
                         }
                         break;
                     }
