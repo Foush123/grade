@@ -100,7 +100,43 @@ if ($export === 'csv') {
 
     $users = $reporttmp->get_users_list();
     if (empty($users)) {
-        $users = [];
+        // Stream only headers when no users.
+        $filename = 'grader_export_' . $courseid . '_' . time() . '.csv';
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename=' . $filename);
+        header('Pragma: no-cache');
+        header('Expires: 0');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, [
+            get_string('fullname'),
+            get_string('email'),
+            get_string('csv_loginscount', 'gradereport_grader'),
+            get_string('csv_activedays', 'gradereport_grader'),
+            get_string('csv_coursecompletion', 'gradereport_grader'),
+            get_string('csv_modulesunlocked', 'gradereport_grader'),
+            get_string('lastcourseaccess', 'gradereport_grader'),
+            get_string('lastlogin', 'gradereport_grader'),
+            get_string('activitiescompleted', 'gradereport_grader'),
+            get_string('csv_overduecount', 'gradereport_grader'),
+            get_string('csv_quiz_firstacc', 'gradereport_grader'),
+            get_string('csv_quiz_bestpct', 'gradereport_grader'),
+            get_string('csv_quiz_attempts', 'gradereport_grader'),
+            get_string('csv_quiz_attemptsratio', 'gradereport_grader'),
+            get_string('csv_quiz_avgtime', 'gradereport_grader'),
+            get_string('csv_assign_avgpct', 'gradereport_grader'),
+            get_string('csv_assign_ontimepct', 'gradereport_grader'),
+            get_string('csv_assign_resub', 'gradereport_grader'),
+            get_string('csv_assign_feedbackrich', 'gradereport_grader'),
+            get_string('csv_forum_posts', 'gradereport_grader'),
+            get_string('csv_forum_replies', 'gradereport_grader'),
+            get_string('csv_badges', 'gradereport_grader'),
+            get_string('csv_competencies', 'gradereport_grader'),
+            get_string('csv_competency_proficiency', 'gradereport_grader'),
+            get_string('csv_competency_achieveddate', 'gradereport_grader'),
+            get_string('csv_competency_lastupdated', 'gradereport_grader'),
+        ]);
+        fclose($out);
+        exit;
     }
     $userids = array_keys($users);
 
@@ -170,7 +206,8 @@ if ($export === 'csv') {
     // Assign due dates.
     $sql = "SELECT cm.id cmid, a.duedate
               FROM {assign} a
-              JOIN {course_modules} cm ON cm.instance = a.id AND cm.course = a.course AND cm.module = (SELECT id FROM {modules} WHERE name='assign')
+              JOIN {course_modules} cm ON cm.instance = a.id AND cm.course = a.course
+              JOIN {modules} m ON m.id = cm.module AND m.name = 'assign'
              WHERE a.course = :courseid AND a.duedate > 0";
     $assigndue = $DB->get_records_sql($sql, ['courseid' => $courseid]);
     if (!empty($assigndue)) {
@@ -204,7 +241,8 @@ if ($export === 'csv') {
     // Quiz timeclose overdue.
     $sql = "SELECT cm.id cmid, q.timeclose
               FROM {quiz} q
-              JOIN {course_modules} cm ON cm.instance = q.id AND cm.course = q.course AND cm.module = (SELECT id FROM {modules} WHERE name='quiz')
+              JOIN {course_modules} cm ON cm.instance = q.id AND cm.course = q.course
+              JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
              WHERE q.course = :courseid AND q.timeclose > 0";
     $quizdue = $DB->get_records_sql($sql, ['courseid' => $courseid]);
     if (!empty($quizdue)) {
