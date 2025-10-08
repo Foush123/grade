@@ -6,6 +6,7 @@ defined('MOODLE_INTERNAL') || die();
 global $CFG;
 require_once($CFG->libdir.'/gradelib.php');
 require_once($CFG->dirroot . '/grade/lib.php');
+require_once($CFG->dirroot . '/grade/querylib.php');
 require_once($CFG->libdir.'/tablelib.php');
 
 class user {
