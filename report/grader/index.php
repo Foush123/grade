@@ -268,9 +268,12 @@ if ($export === 'csv') {
 
     // Quizzes aggregates (best final grade %, attempts, average time seconds).
     $quizstats = [];
-    $sql = "SELECT q.id quizid, q.course, q.sumgrades, q.grade FROM {quiz} q WHERE q.course = :courseid";
-    $quizzes = $DB->get_records_sql($sql, ['courseid' => $courseid]);
-    if (!empty($quizzes)) {
+    $quizzes = [];
+    if ($DB->get_manager()->table_exists('quiz')) {
+        $sql = "SELECT q.id quizid, q.course, q.sumgrades, q.grade FROM {quiz} q WHERE q.course = :courseid";
+        $quizzes = $DB->get_records_sql($sql, ['courseid' => $courseid]);
+    }
+    if (!empty($quizzes) && $DB->get_manager()->table_exists('quiz_grades') && $DB->get_manager()->table_exists('quiz_attempts')) {
         list($usqll, $uparamsl) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'uq');
         $quizids = array_keys($quizzes);
         list($qsql, $qparams) = $DB->get_in_or_equal($quizids, SQL_PARAMS_NAMED, 'qid');
@@ -334,11 +337,13 @@ if ($export === 'csv') {
 
     // Assignments aggregates (avg grade %, on-time rate %, resubmission count).
     $assignstats = [];
+    $assignitems = [];
     $sql = "SELECT gi.id giid, gi.grademax, gi.iteminstance assignid
               FROM {grade_items} gi
              WHERE gi.courseid = :courseid AND gi.itemtype = 'mod' AND gi.itemmodule = 'assign'";
     $assignitems = $DB->get_records_sql($sql, ['courseid' => $courseid]);
-    if (!empty($assignitems)) {
+    if (!empty($assignitems) && $DB->get_manager()->table_exists('grade_grades') &&
+        $DB->get_manager()->table_exists('assign_submission') && $DB->get_manager()->table_exists('assign')) {
         $giids = array_keys($assignitems);
         list($gisql, $giparams) = $DB->get_in_or_equal($giids, SQL_PARAMS_NAMED, 'gi');
         // Grades percent.
@@ -384,12 +389,15 @@ if ($export === 'csv') {
     }
 
     // Forum posts and replies counts.
-    $forumposts = $DB->get_records_sql("SELECT p.userid, SUM(CASE WHEN p.parent=0 THEN 1 ELSE 0 END) posts, SUM(CASE WHEN p.parent<>0 THEN 1 ELSE 0 END) replies
-                                         FROM {forum_posts} p
-                                         JOIN {forum_discussions} d ON d.id = p.discussion
-                                         JOIN {forum} f ON f.id = d.forum AND f.course = :courseid
-                                        WHERE p.userid $usql
-                                     GROUP BY p.userid", $uparams + ['courseid' => $courseid]);
+    $forumposts = [];
+    if ($DB->get_manager()->table_exists('forum_posts') && $DB->get_manager()->table_exists('forum_discussions') && $DB->get_manager()->table_exists('forum')) {
+        $forumposts = $DB->get_records_sql("SELECT p.userid, SUM(CASE WHEN p.parent=0 THEN 1 ELSE 0 END) posts, SUM(CASE WHEN p.parent<>0 THEN 1 ELSE 0 END) replies
+                                             FROM {forum_posts} p
+                                             JOIN {forum_discussions} d ON d.id = p.discussion
+                                             JOIN {forum} f ON f.id = d.forum AND f.course = :courseid
+                                            WHERE p.userid $usql
+                                         GROUP BY p.userid", $uparams + ['courseid' => $courseid]);
+    }
 
     // Badges count for course.
     $badges = [];
@@ -412,7 +420,7 @@ if ($export === 'csv') {
 
     // Feedback richness (assign): presence of any comments feedback.
     $feedbackrich = array_fill_keys($userids, 'N');
-    if ($DB->get_manager()->table_exists('assignfeedback_comments') && $DB->get_manager()->table_exists('assign_grades')) {
+    if ($DB->get_manager()->table_exists('assignfeedback_comments') && $DB->get_manager()->table_exists('assign_grades') && $DB->get_manager()->table_exists('assign')) {
         $sql = "SELECT ag.userid, COUNT(af.id) cnt
                   FROM {assignfeedback_comments} af
                   JOIN {assign_grades} ag ON ag.id = af.grade
