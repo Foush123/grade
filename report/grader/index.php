@@ -412,8 +412,8 @@ if ($export === 'csv') {
     // Competencies achieved count for course.
     $competencies = [];
     if ($DB->get_manager()->table_exists('competency_usercompcourse')) {
-        // Use timeproficient (when proficiency achieved) and timemodified.
-        $competencies = $DB->get_records_sql("SELECT userid, COUNT(1) cnt, MAX(timeproficient) achieved, MAX(timemodified) lastupdated
+        // Use timemodified for both achieved and lastupdated to avoid version-specific fields.
+        $competencies = $DB->get_records_sql("SELECT userid, COUNT(1) cnt, MAX(timemodified) achieved, MAX(timemodified) lastupdated
                                                 FROM {competency_usercompcourse}
                                                WHERE courseid = :courseid AND userid $usql AND proficiency = 1
                                             GROUP BY userid", $uparams + ['courseid' => $courseid]);
