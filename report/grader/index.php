@@ -58,52 +58,6 @@ $PAGE->requires->js_call_amd('gradereport_grader/user', 'init', [$baseurl->out(f
 $PAGE->requires->js_call_amd('gradereport_grader/feedback_modal', 'init');
 $PAGE->requires->js_call_amd('core_grades/gradebooksetup_forms', 'init');
 
-// CSV export.
-$export = optional_param('export', '', PARAM_ALPHA);
-if ($export === 'csv') {
-    require_capability('gradereport/grader:view', $context);
-    require_capability('moodle/grade:viewall', $context);
-
-    $gprtmp = new grade_plugin_return([
-        'type' => 'report',
-        'plugin' => 'grader',
-        'course' => $course,
-        'page' => 0
-    ]);
-    $reporttmp = new grade_report_grader($courseid, $gprtmp, $context, 0, null, 'ASC');
-    $reporttmp->load_users(true);
-
-    $users = $reporttmp->get_users_list();
-
-    $filename = 'grader_export_' . $courseid . '_' . time() . '.csv';
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename=' . $filename);
-    header('Pragma: no-cache');
-    header('Expires: 0');
-
-    $out = fopen('php://output', 'w');
-    fputcsv($out, [
-        get_string('fullname'),
-        get_string('email'),
-        get_string('lastlogin', 'gradereport_grader'),
-        get_string('lastcourseaccess', 'gradereport_grader'),
-        get_string('activitiescompleted', 'gradereport_grader'),
-        get_string('assignmentsubmissions', 'gradereport_grader'),
-    ]);
-
-    foreach ($users as $u) {
-        $fullname = fullname($u);
-        $email = $u->email ?? '';
-        $ll = empty($u->lastlogin) ? '' : userdate($u->lastlogin, get_string('strftimedatetimeshort'));
-        $lca = empty($u->courselastaccess) ? '' : userdate($u->courselastaccess, get_string('strftimedatetimeshort'));
-        $ac = (int)($u->activitiescompleted ?? 0);
-        $as = (int)($u->assignmentsubmissions ?? 0);
-        fputcsv($out, [$fullname, $email, $ll, $lca, $ac, $as]);
-    }
-    fclose($out);
-    exit;
-}
-
 // basic access checks
 if (!$course = $DB->get_record('course', array('id' => $courseid))) {
     throw new \moodle_exception('invalidcourseid');
@@ -131,6 +85,301 @@ if (isset($studentsperpage) && $studentsperpage >= 0) {
 
 require_capability('gradereport/grader:view', $context);
 require_capability('moodle/grade:viewall', $context);
+
+// CSV export (runs after context is available).
+$export = optional_param('export', '', PARAM_ALPHA);
+if ($export === 'csv') {
+    $gprtmp = new grade_plugin_return([
+        'type' => 'report',
+        'plugin' => 'grader',
+        'course' => $course,
+        'page' => 0
+    ]);
+    $reporttmp = new grade_report_grader($courseid, $gprtmp, $context, 0, null, 'ASC');
+    $reporttmp->load_users(true);
+
+    $users = $reporttmp->get_users_list();
+    if (empty($users)) {
+        $users = [];
+    }
+    $userids = array_keys($users);
+
+    // Pre-compute aggregates for all users in bulk.
+    $now = time();
+
+    // Logins count (site-wide).
+    list($usql, $uparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'ul0');
+    $logins = [];
+    if ($DB->get_manager()->table_exists('logstore_standard_log')) {
+        $sql = "SELECT userid, COUNT(1) cnt
+                  FROM {logstore_standard_log}
+                 WHERE userid $usql AND (action = 'loggedin' OR eventname = :evname)
+              GROUP BY userid";
+        $logins = $DB->get_records_sql($sql, $uparams + ['evname' => '\\core\\event\\user_loggedin']);
+    }
+
+    // Active learning days (distinct days with course activity logs).
+    $activedays = [];
+    if ($DB->get_manager()->table_exists('logstore_standard_log')) {
+        $sql = "SELECT userid, COUNT(DISTINCT FLOOR(timecreated/86400)) cnt
+                  FROM {logstore_standard_log}
+                 WHERE userid $usql AND courseid = :courseid
+              GROUP BY userid";
+        $activedays = $DB->get_records_sql($sql, $uparams + ['courseid' => $courseid]);
+    }
+
+    // Activities completed percentage.
+    // Total trackable modules in course.
+    $sql = "SELECT COUNT(1) cnt
+              FROM {course_modules} cm
+             WHERE cm.course = :courseid AND cm.completion > 0";
+    $totaltrackable = (int)($DB->get_field_sql($sql, ['courseid' => $courseid]) ?: 0);
+    $completedpct = [];
+    if ($totaltrackable > 0) {
+        $sql = "SELECT cmc.userid, COUNT(1) cnt
+                  FROM {course_modules_completion} cmc
+                  JOIN {course_modules} cm ON cm.id = cmc.coursemoduleid
+                 WHERE cm.course = :courseid AND cm.completion > 0 AND cmc.userid $usql AND cmc.completionstate = 1
+              GROUP BY cmc.userid";
+        $completed = $DB->get_records_sql($sql, $uparams + ['courseid' => $courseid]);
+        foreach ($userids as $uid) {
+            $c = isset($completed[$uid]) ? (int)$completed[$uid]->cnt : 0;
+            $completedpct[$uid] = $totaltrackable ? round(($c / $totaltrackable) * 100, 1) : 0;
+        }
+    }
+
+    // Overdue activities count: assign and quiz not completed and due date passed.
+    $overdue = array_fill_keys($userids, 0);
+    // Assign due dates.
+    $sql = "SELECT cm.id cmid, a.duedate
+              FROM {assign} a
+              JOIN {course_modules} cm ON cm.instance = a.id AND cm.course = a.course AND cm.module = (SELECT id FROM {modules} WHERE name='assign')
+             WHERE a.course = :courseid AND a.duedate > 0";
+    $assigndue = $DB->get_records_sql($sql, ['courseid' => $courseid]);
+    if (!empty($assigndue)) {
+        list($cmsql, $cmparams) = $DB->get_in_or_equal(array_keys($assigndue), SQL_PARAMS_NAMED, 'cmA');
+        $sql = "SELECT cmc.userid, cmc.coursemoduleid cmid, cmc.completionstate
+                  FROM {course_modules_completion} cmc
+                 WHERE cmc.coursemoduleid $cmsql AND cmc.userid $usql";
+        $cmcomp = $DB->get_records_sql($sql, $cmparams + $uparams);
+        foreach ($assigndue as $cmid => $rec) {
+            if ($rec->duedate < $now) {
+                foreach ($userids as $uid) {
+                    $key = $uid . '-' . $cmid;
+                }
+            }
+        }
+        // Increment if past due and not completed.
+        foreach ($userids as $uid) {
+            foreach ($assigndue as $cmid => $rec) {
+                if ($rec->duedate < $now) {
+                    $found = false;
+                    foreach ($cmcomp as $row) {
+                        if ((int)$row->userid === (int)$uid && (int)$row->cmid === (int)$cmid && (int)$row->completionstate === 1) {
+                            $found = true; break;
+                        }
+                    }
+                    if (!$found) { $overdue[$uid]++; }
+                }
+            }
+        }
+    }
+    // Quiz timeclose overdue.
+    $sql = "SELECT cm.id cmid, q.timeclose
+              FROM {quiz} q
+              JOIN {course_modules} cm ON cm.instance = q.id AND cm.course = q.course AND cm.module = (SELECT id FROM {modules} WHERE name='quiz')
+             WHERE q.course = :courseid AND q.timeclose > 0";
+    $quizdue = $DB->get_records_sql($sql, ['courseid' => $courseid]);
+    if (!empty($quizdue)) {
+        list($cmsql, $cmparams) = $DB->get_in_or_equal(array_keys($quizdue), SQL_PARAMS_NAMED, 'cmQ');
+        $sql = "SELECT cmc.userid, cmc.coursemoduleid cmid, cmc.completionstate
+                  FROM {course_modules_completion} cmc
+                 WHERE cmc.coursemoduleid $cmsql AND cmc.userid $usql";
+        $cmcomp = $DB->get_records_sql($sql, $cmparams + $uparams);
+        foreach ($userids as $uid) {
+            foreach ($quizdue as $cmid => $rec) {
+                if ($rec->timeclose < $now) {
+                    $found = false;
+                    foreach ($cmcomp as $row) {
+                        if ((int)$row->userid === (int)$uid && (int)$row->cmid === (int)$cmid && (int)$row->completionstate === 1) {
+                            $found = true; break;
+                        }
+                    }
+                    if (!$found) { $overdue[$uid]++; }
+                }
+            }
+        }
+    }
+
+    // Quizzes aggregates (best final grade %, attempts, average time seconds).
+    $quizstats = [];
+    $sql = "SELECT q.id quizid, q.course, q.sumgrades, q.grade FROM {quiz} q WHERE q.course = :courseid";
+    $quizzes = $DB->get_records_sql($sql, ['courseid' => $courseid]);
+    if (!empty($quizzes)) {
+        list($usqll, $uparamsl) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'uq');
+        $quizids = array_keys($quizzes);
+        list($qsql, $qparams) = $DB->get_in_or_equal($quizids, SQL_PARAMS_NAMED, 'qid');
+        // Best final grade per user per quiz from quiz_grades.
+        $grades = $DB->get_records_sql("SELECT userid, quiz, grade FROM {quiz_grades} WHERE userid $usqll AND quiz $qsql", $uparamsl + $qparams);
+        // Attempts count and avg time.
+        $attempts = $DB->get_records_sql("SELECT userid, quiz, COUNT(1) cnt, AVG(NULLIF(timefinish - timestart,0)) avgdur FROM {quiz_attempts} WHERE userid $usqll AND quiz $qsql AND state='finished' GROUP BY userid, quiz", $uparamsl + $qparams);
+        foreach ($userids as $uid) {
+            $bestpct = 0; $attemptsused = 0; $avgtime = 0; $quizcount = 0;
+            foreach ($quizzes as $qid => $q) {
+                $quizcount++;
+                $gkey = $uid . '-' . $qid;
+                // Best grade percent for this quiz.
+                foreach ($grades as $gr) {
+                    if ((int)$gr->userid === (int)$uid && (int)$gr->quiz === (int)$qid) {
+                        if ($q->sumgrades > 0 && $q->grade > 0) {
+                            $bestpct += round(($gr->grade / $q->grade) * 100, 1);
+                        }
+                        break;
+                    }
+                }
+                foreach ($attempts as $at) {
+                    if ((int)$at->userid === (int)$uid && (int)$at->quiz === (int)$qid) {
+                        $attemptsused += (int)$at->cnt;
+                        $avgtime += (int)$at->avgdur;
+                        break;
+                    }
+                }
+            }
+            if ($quizcount > 0) {
+                $bestpct = round($bestpct / $quizcount, 1);
+                $avgtime = round($avgtime / $quizcount, 0);
+            }
+            $quizstats[$uid] = (object)['bestpct' => $bestpct, 'attempts' => $attemptsused, 'avgtime' => $avgtime];
+        }
+    }
+
+    // Assignments aggregates (avg grade %, on-time rate %, resubmission count).
+    $assignstats = [];
+    $sql = "SELECT gi.id giid, gi.grademax, gi.iteminstance assignid
+              FROM {grade_items} gi
+             WHERE gi.courseid = :courseid AND gi.itemtype = 'mod' AND gi.itemmodule = 'assign'";
+    $assignitems = $DB->get_records_sql($sql, ['courseid' => $courseid]);
+    if (!empty($assignitems)) {
+        $giids = array_keys($assignitems);
+        list($gisql, $giparams) = $DB->get_in_or_equal($giids, SQL_PARAMS_NAMED, 'gi');
+        // Grades percent.
+        $grades = $DB->get_records_sql("SELECT userid, itemid, finalgrade FROM {grade_grades} WHERE userid $usql AND itemid $gisql", $uparams + $giparams);
+        // Submissions.
+        $assignids = array_map(function($r){return $r->assignid;}, $assignitems);
+        list($asql, $aparams) = $DB->get_in_or_equal($assignids, SQL_PARAMS_NAMED, 'as');
+        $subs = $DB->get_records_sql("SELECT userid, assignment, COUNT(1) cnt, SUM(CASE WHEN attemptnumber>0 THEN 1 ELSE 0 END) resub FROM {assign_submission} WHERE userid $usql AND assignment $asql GROUP BY userid, assignment", $uparams + $aparams);
+        $assignrecords = $DB->get_records_sql("SELECT id, duedate FROM {assign} WHERE id $asql", $aparams);
+        foreach ($userids as $uid) {
+            $sumgradepct = 0; $gradecount = 0; $ontime = 0; $subcount = 0; $resub = 0;
+            foreach ($assignitems as $giid => $gi) {
+                foreach ($grades as $gr) {
+                    if ((int)$gr->userid === (int)$uid && (int)$gr->itemid === (int)$giid && $gi->grademax > 0) {
+                        $sumgradepct += round(($gr->finalgrade / $gi->grademax) * 100, 1);
+                        $gradecount++;
+                    }
+                }
+            }
+            foreach ($subs as $s) {
+                if ((int)$s->userid === (int)$uid) {
+                    $subcount += (int)$s->cnt;
+                    $resub += (int)$s->resub;
+                }
+            }
+            // On-time: count latest submissions before duedate.
+            $ontimecount = 0; $eligible = 0;
+            $latest = $DB->get_records_sql("SELECT s.userid, s.assignment, MAX(s.timecreated) t
+                                              FROM {assign_submission} s
+                                             WHERE s.userid $usql AND s.assignment $asql
+                                          GROUP BY s.userid, s.assignment", $uparams + $aparams);
+            foreach ($latest as $ls) {
+                if ((int)$ls->userid === (int)$uid) {
+                    $eligible++;
+                    $due = $assignrecords[$ls->assignment]->duedate ?? 0;
+                    if ($due <= 0 || $ls->t <= $due) { $ontimecount++; }
+                }
+            }
+            $avggradepct = $gradecount ? round($sumgradepct / $gradecount, 1) : 0;
+            $ontimerate = $eligible ? round(($ontimecount / $eligible) * 100, 1) : 0;
+            $assignstats[$uid] = (object)['avggradepct' => $avggradepct, 'ontime' => $ontimerate, 'resub' => $resub];
+        }
+    }
+
+    // Forum posts and replies counts.
+    $forumposts = $DB->get_records_sql("SELECT p.userid, SUM(CASE WHEN p.parent=0 THEN 1 ELSE 0 END) posts, SUM(CASE WHEN p.parent<>0 THEN 1 ELSE 0 END) replies
+                                         FROM {forum_posts} p
+                                         JOIN {forum_discussions} d ON d.id = p.discussion
+                                         JOIN {forum} f ON f.id = d.forum AND f.course = :courseid
+                                        WHERE p.userid $usql
+                                     GROUP BY p.userid", $uparams + ['courseid' => $courseid]);
+
+    // Badges count for course.
+    $badges = [];
+    if ($DB->get_manager()->table_exists('badge_issued')) {
+        $badges = $DB->get_records_sql("SELECT bi.userid, COUNT(1) cnt
+                                          FROM {badge_issued} bi
+                                          JOIN {badge} b ON b.id = bi.badgeid AND b.courseid = :courseid
+                                         WHERE bi.userid $usql
+                                      GROUP BY bi.userid", $uparams + ['courseid' => $courseid]);
+    }
+
+    // Competencies achieved count for course.
+    $competencies = [];
+    if ($DB->get_manager()->table_exists('competency_usercompcourse')) {
+        $competencies = $DB->get_records_sql("SELECT userid, COUNT(1) cnt
+                                                FROM {competency_usercompcourse}
+                                               WHERE courseid = :courseid AND userid $usql AND proficiency = 1
+                                            GROUP BY userid", $uparams + ['courseid' => $courseid]);
+    }
+
+    $filename = 'grader_export_' . $courseid . '_' . time() . '.csv';
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=' . $filename);
+    header('Pragma: no-cache');
+    header('Expires: 0');
+
+    $out = fopen('php://output', 'w');
+    fputcsv($out, [
+        get_string('fullname'),
+        get_string('email'),
+        get_string('csv_loginscount', 'gradereport_grader'),
+        get_string('csv_activedays', 'gradereport_grader'),
+        get_string('lastcourseaccess', 'gradereport_grader'),
+        get_string('lastlogin', 'gradereport_grader'),
+        get_string('activitiescompleted', 'gradereport_grader'),
+        get_string('csv_overduecount', 'gradereport_grader'),
+        get_string('csv_quiz_bestpct', 'gradereport_grader'),
+        get_string('csv_quiz_attempts', 'gradereport_grader'),
+        get_string('csv_quiz_avgtime', 'gradereport_grader'),
+        get_string('csv_assign_avgpct', 'gradereport_grader'),
+        get_string('csv_assign_ontimepct', 'gradereport_grader'),
+        get_string('csv_assign_resub', 'gradereport_grader'),
+        get_string('csv_forum_posts', 'gradereport_grader'),
+        get_string('csv_forum_replies', 'gradereport_grader'),
+        get_string('csv_badges', 'gradereport_grader'),
+        get_string('csv_competencies', 'gradereport_grader'),
+    ]);
+
+    foreach ($users as $u) {
+        $uid = (int)$u->id;
+        $fullname = fullname($u);
+        $email = $u->email ?? '';
+        $lc = isset($logins[$uid]) ? (int)$logins[$uid]->cnt : 0;
+        $ad = isset($activedays[$uid]) ? (int)$activedays[$uid]->cnt : 0;
+        $lca = empty($u->courselastaccess) ? '' : userdate($u->courselastaccess, get_string('strftimedatetimeshort'));
+        $ll = empty($u->lastlogin) ? '' : userdate($u->lastlogin, get_string('strftimedatetimeshort'));
+        $acpct = isset($completedpct[$uid]) ? $completedpct[$uid] : 0;
+        $od = isset($overdue[$uid]) ? $overdue[$uid] : 0;
+        $q = $quizstats[$uid] ?? (object)['bestpct' => 0, 'attempts' => 0, 'avgtime' => 0];
+        $a = $assignstats[$uid] ?? (object)['avggradepct' => 0, 'ontime' => 0, 'resub' => 0];
+        $fp = $forumposts[$uid]->posts ?? 0;
+        $fr = $forumposts[$uid]->replies ?? 0;
+        $bd = $badges[$uid]->cnt ?? 0;
+        $cp = $competencies[$uid]->cnt ?? 0;
+        fputcsv($out, [$fullname, $email, $lc, $ad, $lca, $ll, $acpct, $od, $q->bestpct, $q->attempts, $q->avgtime, $a->avggradepct, $a->ontime, $a->resub, $fp, $fr, $bd, $cp]);
+    }
+    fclose($out);
+    exit;
+}
 
 // return tracking object
 $gpr = new grade_plugin_return(
