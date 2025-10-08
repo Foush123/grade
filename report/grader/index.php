@@ -58,6 +58,52 @@ $PAGE->requires->js_call_amd('gradereport_grader/user', 'init', [$baseurl->out(f
 $PAGE->requires->js_call_amd('gradereport_grader/feedback_modal', 'init');
 $PAGE->requires->js_call_amd('core_grades/gradebooksetup_forms', 'init');
 
+// CSV export.
+$export = optional_param('export', '', PARAM_ALPHA);
+if ($export === 'csv') {
+    require_capability('gradereport/grader:view', $context);
+    require_capability('moodle/grade:viewall', $context);
+
+    $gprtmp = new grade_plugin_return([
+        'type' => 'report',
+        'plugin' => 'grader',
+        'course' => $course,
+        'page' => 0
+    ]);
+    $reporttmp = new grade_report_grader($courseid, $gprtmp, $context, 0, null, 'ASC');
+    $reporttmp->load_users(true);
+
+    $users = $reporttmp->get_users_list();
+
+    $filename = 'grader_export_' . $courseid . '_' . time() . '.csv';
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=' . $filename);
+    header('Pragma: no-cache');
+    header('Expires: 0');
+
+    $out = fopen('php://output', 'w');
+    fputcsv($out, [
+        get_string('fullname'),
+        get_string('email'),
+        get_string('lastlogin', 'gradereport_grader'),
+        get_string('lastcourseaccess', 'gradereport_grader'),
+        get_string('activitiescompleted', 'gradereport_grader'),
+        get_string('assignmentsubmissions', 'gradereport_grader'),
+    ]);
+
+    foreach ($users as $u) {
+        $fullname = fullname($u);
+        $email = $u->email ?? '';
+        $ll = empty($u->lastlogin) ? '' : userdate($u->lastlogin, get_string('strftimedatetimeshort'));
+        $lca = empty($u->courselastaccess) ? '' : userdate($u->courselastaccess, get_string('strftimedatetimeshort'));
+        $ac = (int)($u->activitiescompleted ?? 0);
+        $as = (int)($u->assignmentsubmissions ?? 0);
+        fputcsv($out, [$fullname, $email, $ll, $lca, $ac, $as]);
+    }
+    fclose($out);
+    exit;
+}
+
 // basic access checks
 if (!$course = $DB->get_record('course', array('id' => $courseid))) {
     throw new \moodle_exception('invalidcourseid');
@@ -153,7 +199,10 @@ $PAGE->requires->js_call_amd('gradereport_grader/collapse', 'init', [
 $numusers = $report->get_numusers(true, true);
 
 $actionbar = new \gradereport_grader\output\action_bar($context, $report, $numusers);
-print_grade_page_head($COURSE->id, 'report', 'grader', false, false, $buttons, true,
+// Export button above the table.
+$exporturl = new moodle_url('/grade/report/grader/index.php', ['id' => $courseid, 'export' => 'csv']);
+$exportbutton = html_writer::link($exporturl, get_string('exportcsv', 'gradereport_grader'), ['class' => 'btn btn-secondary']);
+print_grade_page_head($COURSE->id, 'report', 'grader', false, false, $buttons . html_writer::div($exportbutton, 'ms-2 d-inline-block'), true,
     null, null, null, $actionbar);
 
 // make sure separate group does not prevent view

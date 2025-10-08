@@ -32,6 +32,7 @@ $string['grader:manage'] = 'Manage the grader report';
 $string['grader:view'] = 'View grader report';
 $string['pluginname'] = 'Grader report';
 $string['preferences'] = 'Grader report preferences';
+$string['exportcsv'] = 'Export CSV';
 $string['lastlogin'] = 'Last login';
 $string['lastcourseaccess'] = 'Last course access';
 $string['activitiescompleted'] = 'Activities completed';

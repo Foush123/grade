@@ -604,6 +604,14 @@ class grade_report_grader extends grade_report {
     }
 
     /**
+     * Public accessor for loaded users to support exports.
+     * @return array
+     */
+    public function get_users_list(): array {
+        return $this->users ?? [];
+    }
+
+    /**
      * we supply the userids in this query, and get all the grades
      * pulls out all the grades, this does not need to worry about paging
      */
