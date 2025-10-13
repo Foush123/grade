@@ -70,13 +70,13 @@ if ((optional_param('savejobprofile', false, PARAM_BOOL)
     || optional_param('addrow', false, PARAM_BOOL)
     || optional_param('removerows', false, PARAM_BOOL)) && confirm_sesskey()) {
 
-    $rows = optional_param_array('rows', [], PARAM_RAW);
+    $rows = optional_param_array('rows', [], PARAM_RAW, true);
     if (!is_array($rows)) {
         $rows = [];
     }
 
     // Remove selected rows if requested.
-    $toremove = optional_param_array('remove', [], PARAM_RAW);
+    $toremove = optional_param_array('remove', [], PARAM_RAW, true);
     if (is_array($toremove) && !empty($toremove)) {
         foreach ($toremove as $idx => $val) {
             if ($val) {

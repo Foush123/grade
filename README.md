@@ -20,6 +20,7 @@ The codebase follows Moodle's core architecture: PHP for backend logic, Mustache
 - Tests
 - Upgrading and compatibility
 - Contributing and code style
+ - Custom Job Profile report
 
 
 ## Overview
@@ -146,6 +147,19 @@ Directories:
 - Reports are modular under `report/` and may include their own JS, templates, and tests.
 - Primary entry points are `report/*/index.php` and related library files.
 - The grader report (`report/grader/`) provides the grid, inline editing, and bulk operations.
+
+### Custom: Job Profile report
+- Location: `report/jobprofile/`
+- Purpose: Configurable table for personal skills with editable columns; auto-calculates User grades (mean of System, Assignment, Instructor) and User Skill % (Weight × User grades / 100).
+- Files:
+  - `index.php`: Renders and processes the editable table, persists per-course config.
+  - `db/access.php`: Capability `gradereport/jobprofile:view`.
+  - `version.php`, `lib.php`, `lang/en/gradereport_jobprofile.php`.
+- Usage:
+  - URL: `/grade/report/jobprofile/index.php?id=COURSE_ID`.
+  - Buttons: Add row, Delete (selected), Save changes.
+  - Data persistence: Stored in plugin config keyed per course.
+  - Notes: Accepts values like `10` or `10%`; `-` means empty. Derived columns are read-only.
 
 
 ## Grading UI and advanced grading
