@@ -70,13 +70,12 @@ if ((optional_param('savejobprofile', false, PARAM_BOOL)
     || optional_param('addrow', false, PARAM_BOOL)
     || optional_param('removerows', false, PARAM_BOOL)) && confirm_sesskey()) {
 
-    $rows = optional_param_array('rows', [], PARAM_RAW, true);
-    if (!is_array($rows)) {
-        $rows = [];
-    }
+    // Note: optional_param_array only supports one-dimensional arrays. Our structure is nested
+    // (rows[idx][field]), so we must read directly from POST after sesskey verification.
+    $rows = isset($_POST['rows']) && is_array($_POST['rows']) ? $_POST['rows'] : [];
 
     // Remove selected rows if requested.
-    $toremove = optional_param_array('remove', [], PARAM_RAW, true);
+    $toremove = isset($_POST['remove']) && is_array($_POST['remove']) ? $_POST['remove'] : [];
     if (is_array($toremove) && !empty($toremove)) {
         foreach ($toremove as $idx => $val) {
             if ($val) {
