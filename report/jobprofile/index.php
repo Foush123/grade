@@ -66,24 +66,114 @@ if (!is_array($data)) {
 }
 
 // Handle form submission.
-if (optional_param('savejobprofile', false, PARAM_BOOL) && confirm_sesskey()) {
-    $rows = optional_param_array('rows', [], PARAM_RAW_TRIMMED);
+if ((optional_param('savejobprofile', false, PARAM_BOOL)
+    || optional_param('addrow', false, PARAM_BOOL)
+    || optional_param('removerows', false, PARAM_BOOL)) && confirm_sesskey()) {
+
+    $rows = optional_param_array('rows', [], PARAM_RAW);
+    if (!is_array($rows)) {
+        $rows = [];
+    }
+
+    // Remove selected rows if requested.
+    $toremove = optional_param_array('remove', [], PARAM_RAW);
+    if (is_array($toremove) && !empty($toremove)) {
+        foreach ($toremove as $idx => $val) {
+            if ($val) {
+                unset($rows[$idx]);
+            }
+        }
+        $rows = array_values($rows);
+    }
+
+    // Add a blank row if requested.
+    if (optional_param('addrow', false, PARAM_BOOL)) {
+        $rows[] = ['skill' => '', 'weight' => '', 'system' => '', 'assignment' => '', 'instructor' => ''];
+    }
+
+    // Compute derived columns and normalize values.
     $normalized = [];
-    if (is_array($rows)) {
-        foreach ($rows as $row) {
-            $normalized[] = [
-                'skill' => $row['skill'] ?? '',
-                'weight' => $row['weight'] ?? '',
-                'system' => $row['system'] ?? '',
-                'assignment' => $row['assignment'] ?? '',
-                'instructor' => $row['instructor'] ?? '',
-                'usergrade' => $row['usergrade'] ?? '',
-                'userskill' => $row['userskill'] ?? '',
-            ];
+    foreach ($rows as $row) {
+        $skill = $row['skill'] ?? '';
+        $weight = trim((string)($row['weight'] ?? ''));
+        $system = trim((string)($row['system'] ?? ''));
+        $assignment = trim((string)($row['assignment'] ?? ''));
+        $instructor = trim((string)($row['instructor'] ?? ''));
+
+        $usergradeval = calculate_usergrade([$system, $assignment, $instructor]);
+        $userskillval = calculate_userskill($weight, $usergradeval);
+
+        $normalized[] = [
+            'skill' => $skill,
+            'weight' => format_percent_str($weight),
+            'system' => format_percent_str($system),
+            'assignment' => format_percent_str($assignment),
+            'instructor' => format_percent_str($instructor),
+            'usergrade' => format_percent_value($usergradeval),
+            'userskill' => format_percent_value($userskillval, 1),
+        ];
+    }
+
+    set_config($configkey, json_encode($normalized), 'gradereport_jobprofile');
+
+    // If this was just add/remove, stay on page without message. On save, show message.
+    if (optional_param('savejobprofile', false, PARAM_BOOL)) {
+        redirect($PAGE->url, get_string('changessaved'), 0);
+    } else {
+        redirect($PAGE->url);
+    }
+}
+
+// Helper: parsing and formatting.
+function parse_percent_to_float($value): ?float {
+    $value = trim((string)$value);
+    if ($value === '' || $value === '-' ) {
+        return null;
+    }
+    if (substr($value, -1) === '%') {
+        $value = substr($value, 0, -1);
+    }
+    $num = (float)str_replace([',', ' '], ['', ''], $value);
+    return $num;
+}
+
+function calculate_usergrade(array $components): float {
+    $vals = [];
+    foreach ($components as $c) {
+        $v = parse_percent_to_float($c);
+        if ($v !== null) {
+            $vals[] = $v;
         }
     }
-    set_config($configkey, json_encode($normalized), 'gradereport_jobprofile');
-    redirect($PAGE->url, get_string('changessaved'), 0);
+    if (empty($vals)) {
+        return 0.0;
+    }
+    return array_sum($vals) / count($vals);
+}
+
+function calculate_userskill($weight, float $usergrade): float {
+    $w = parse_percent_to_float($weight);
+    if ($w === null) {
+        return 0.0;
+    }
+    return round(($w * $usergrade) / 100, 1);
+}
+
+function format_percent_str($value): string {
+    $v = trim((string)$value);
+    if ($v === '' || $v === '-') {
+        return '-';
+    }
+    // Ensure ends with %.
+    if (substr($v, -1) !== '%') {
+        $v = rtrim($v, '%') . '%';
+    }
+    return $v;
+}
+
+function format_percent_value(float $num, int $decimals = 0): string {
+    $fmt = $decimals > 0 ? number_format($num, $decimals) : (string)round($num);
+    return $fmt . '%';
 }
 
 // Render editable table form.
@@ -94,6 +184,7 @@ echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', '
 echo html_writer::start_tag('table', ['class' => 'generaltable boxaligncenter']);
 echo html_writer::start_tag('thead');
 echo html_writer::start_tag('tr');
+echo html_writer::tag('th', '');
 echo html_writer::tag('th', 'Personal Skills');
 echo html_writer::tag('th', 'System Measurement');
 echo html_writer::tag('th', 'Assignment Measurements');
@@ -104,8 +195,15 @@ echo html_writer::end_tag('tr');
 echo html_writer::end_tag('thead');
 
 echo html_writer::start_tag('tbody');
+// Recompute derived values for display.
 foreach ($data as $idx => $row) {
+    $usergradeval = calculate_usergrade([$row['system'] ?? '', $row['assignment'] ?? '', $row['instructor'] ?? '']);
+    $userskillval = calculate_userskill($row['weight'] ?? '', $usergradeval);
     echo html_writer::start_tag('tr');
+    // Remove checkbox.
+    echo html_writer::tag('td', html_writer::empty_tag('input', [
+        'type' => 'checkbox', 'name' => "remove[$idx]", 'value' => 1
+    ]));
     // Skill name and weight in first cell stacked for compactness similar to screenshot.
     echo html_writer::tag('td',
         html_writer::empty_tag('input', [
@@ -125,18 +223,39 @@ foreach ($data as $idx => $row) {
     echo html_writer::tag('td', html_writer::empty_tag('input', [
         'type' => 'text', 'name' => "rows[$idx][instructor]", 'value' => $row['instructor'], 'size' => 6
     ]));
-    echo html_writer::tag('td', html_writer::empty_tag('input', [
-        'type' => 'text', 'name' => "rows[$idx][usergrade]", 'value' => $row['usergrade'], 'size' => 6
-    ]));
-    echo html_writer::tag('td', html_writer::empty_tag('input', [
-        'type' => 'text', 'name' => "rows[$idx][userskill]", 'value' => $row['userskill'], 'size' => 6
-    ]));
+    echo html_writer::tag('td', html_writer::tag('span', format_percent_value($usergradeval)));
+    echo html_writer::tag('td', html_writer::tag('span', format_percent_value($userskillval, 1)));
     echo html_writer::end_tag('tr');
 }
 echo html_writer::end_tag('tbody');
+// Footer totals.
+$totalweight = 0.0;
+$totaluserskill = 0.0;
+foreach ($data as $row) {
+    $w = parse_percent_to_float($row['weight'] ?? '');
+    if ($w !== null) {
+        $totalweight += $w;
+    }
+    $ug = calculate_usergrade([$row['system'] ?? '', $row['assignment'] ?? '', $row['instructor'] ?? '']);
+    $totaluserskill += calculate_userskill($row['weight'] ?? '', $ug);
+}
+echo html_writer::start_tag('tfoot');
+echo html_writer::start_tag('tr');
+echo html_writer::tag('td', html_writer::tag('strong', 'Total'), ['colspan' => 2]);
+echo html_writer::tag('td', '', ['colspan' => 3]);
+echo html_writer::tag('td', '', []);
+echo html_writer::tag('td', html_writer::tag('strong', format_percent_value($totaluserskill, 1)));
+echo html_writer::end_tag('tr');
+echo html_writer::end_tag('tfoot');
 echo html_writer::end_tag('table');
 
+echo html_writer::start_div('buttons mt-3');
+echo html_writer::empty_tag('input', ['type' => 'submit', 'class' => 'btn btn-secondary', 'name' => 'addrow', 'value' => get_string('add')]);
+echo ' ';
+echo html_writer::empty_tag('input', ['type' => 'submit', 'class' => 'btn btn-secondary', 'name' => 'removerows', 'value' => get_string('delete')]);
+echo ' ';
 echo html_writer::empty_tag('input', ['type' => 'submit', 'class' => 'btn btn-primary', 'name' => 'savejobprofile', 'value' => get_string('savechanges')]);
+echo html_writer::end_div();
 echo html_writer::end_tag('form');
 
 echo $OUTPUT->footer();
