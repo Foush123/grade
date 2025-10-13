@@ -128,4 +128,21 @@ class user {
         }
         return [\fullname($user), $user->email, $gradeval];
     }
+
+    /**
+     * Output the zero-state content used when no user is selected.
+     * Mirrors core behaviour by rendering the zero_state mustache template.
+     *
+     * @return string Rendered HTML
+     */
+    public function output_report_zerostate(): string {
+        global $OUTPUT;
+
+        $imgurl = new \moodle_url('/grade/report/user/pix/zero_state.svg');
+        $context = [
+            'imglink' => $imgurl->out(false),
+        ];
+
+        return $OUTPUT->render_from_template('gradereport_user/zero_state', $context);
+    }
 }

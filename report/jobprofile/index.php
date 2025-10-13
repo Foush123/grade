@@ -46,16 +46,98 @@ print_grade_page_head($courseid, 'report', 'jobprofile', false,
     false, false, true, null, null,
     null, null);
 
-// Render the static image for now. Place your image file at pix/jobprofile.png.
-$imageurl = new moodle_url('/grade/report/jobprofile/pix/jobprofile.png');
+// Load existing data from config (per-course) or set defaults.
+$configkey = 'data_' . $courseid;
+$existingjson = get_config('gradereport_jobprofile', $configkey);
 
-echo html_writer::start_div('gradereport-jobprofile-image');
-echo html_writer::empty_tag('img', [
-    'src' => $imageurl->out(false),
-    'alt' => get_string('pluginname', 'gradereport_jobprofile'),
-    'style' => 'max-width:100%;height:auto;'
-]);
-echo html_writer::end_div();
+// Default dataset corresponding to the provided table.
+$defaultdata = [
+    ['skill' => 'Organizational Skills', 'weight' => '10%', 'system' => '60%', 'assignment' => '-', 'instructor' => '40%', 'usergrade' => '90%', 'userskill' => '9%'],
+    ['skill' => 'Communication Skills', 'weight' => '5%', 'system' => '-', 'assignment' => '60%', 'instructor' => '40%', 'usergrade' => '70%', 'userskill' => '3.5%'],
+    ['skill' => 'Collaboration', 'weight' => '5%', 'system' => '-', 'assignment' => '80%', 'instructor' => '20%', 'usergrade' => '60%', 'userskill' => '3.0%'],
+    ['skill' => 'Stress Management', 'weight' => '5%', 'system' => '80%', 'assignment' => '20%', 'instructor' => '-', 'usergrade' => '30%', 'userskill' => '1.5%'],
+    ['skill' => '', 'weight' => '3%', 'system' => '-', 'assignment' => '-', 'instructor' => '100%', 'usergrade' => '85%', 'userskill' => '2.6%'],
+    ['skill' => '', 'weight' => '-', 'system' => '20%', 'assignment' => '80%', 'instructor' => '80%', 'usergrade' => '60%', 'userskill' => '0%'],
+];
+
+$data = $existingjson ? json_decode($existingjson, true) : $defaultdata;
+if (!is_array($data)) {
+    $data = $defaultdata;
+}
+
+// Handle form submission.
+if (optional_param('savejobprofile', false, PARAM_BOOL) && confirm_sesskey()) {
+    $rows = optional_param_array('rows', [], PARAM_RAW_TRIMMED);
+    $normalized = [];
+    if (is_array($rows)) {
+        foreach ($rows as $row) {
+            $normalized[] = [
+                'skill' => $row['skill'] ?? '',
+                'weight' => $row['weight'] ?? '',
+                'system' => $row['system'] ?? '',
+                'assignment' => $row['assignment'] ?? '',
+                'instructor' => $row['instructor'] ?? '',
+                'usergrade' => $row['usergrade'] ?? '',
+                'userskill' => $row['userskill'] ?? '',
+            ];
+        }
+    }
+    set_config($configkey, json_encode($normalized), 'gradereport_jobprofile');
+    redirect($PAGE->url, get_string('changessaved'), 0);
+}
+
+// Render editable table form.
+echo html_writer::start_tag('form', ['method' => 'post', 'action' => $PAGE->url->out(false)]);
+echo html_writer::input_hidden_params($PAGE->url);
+echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+
+echo html_writer::start_tag('table', ['class' => 'generaltable boxaligncenter']);
+echo html_writer::start_tag('thead');
+echo html_writer::start_tag('tr');
+echo html_writer::tag('th', 'Personal Skills');
+echo html_writer::tag('th', 'System Measurement');
+echo html_writer::tag('th', 'Assignment Measurements');
+echo html_writer::tag('th', 'Instructor rating "Feedback"');
+echo html_writer::tag('th', 'User grades');
+echo html_writer::tag('th', 'User Skill %');
+echo html_writer::end_tag('tr');
+echo html_writer::end_tag('thead');
+
+echo html_writer::start_tag('tbody');
+foreach ($data as $idx => $row) {
+    echo html_writer::start_tag('tr');
+    // Skill name and weight in first cell stacked for compactness similar to screenshot.
+    echo html_writer::tag('td',
+        html_writer::empty_tag('input', [
+            'type' => 'text', 'name' => "rows[$idx][skill]", 'value' => $row['skill'], 'size' => 28
+        ]) . ' ' .
+        html_writer::empty_tag('input', [
+            'type' => 'text', 'name' => "rows[$idx][weight]", 'value' => $row['weight'], 'size' => 5
+        ])
+    );
+
+    echo html_writer::tag('td', html_writer::empty_tag('input', [
+        'type' => 'text', 'name' => "rows[$idx][system]", 'value' => $row['system'], 'size' => 6
+    ]));
+    echo html_writer::tag('td', html_writer::empty_tag('input', [
+        'type' => 'text', 'name' => "rows[$idx][assignment]", 'value' => $row['assignment'], 'size' => 6
+    ]));
+    echo html_writer::tag('td', html_writer::empty_tag('input', [
+        'type' => 'text', 'name' => "rows[$idx][instructor]", 'value' => $row['instructor'], 'size' => 6
+    ]));
+    echo html_writer::tag('td', html_writer::empty_tag('input', [
+        'type' => 'text', 'name' => "rows[$idx][usergrade]", 'value' => $row['usergrade'], 'size' => 6
+    ]));
+    echo html_writer::tag('td', html_writer::empty_tag('input', [
+        'type' => 'text', 'name' => "rows[$idx][userskill]", 'value' => $row['userskill'], 'size' => 6
+    ]));
+    echo html_writer::end_tag('tr');
+}
+echo html_writer::end_tag('tbody');
+echo html_writer::end_tag('table');
+
+echo html_writer::empty_tag('input', ['type' => 'submit', 'class' => 'btn btn-primary', 'name' => 'savejobprofile', 'value' => get_string('savechanges')]);
+echo html_writer::end_tag('form');
 
 echo $OUTPUT->footer();
 
