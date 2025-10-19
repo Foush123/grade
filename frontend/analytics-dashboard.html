@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprehensive Analytics Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-color: #0A66FF;
+            --secondary-color: #6c757d;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+            --light-color: #f8f9fa;
+            --dark-color: #343a40;
+        }
+
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .dashboard-header {
+            background: linear-gradient(135deg, var(--primary-color), #0056b3);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+        }
+
+        .metric-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .metric-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .metric-label {
+            color: var(--secondary-color);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .chart-container {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav-pills .nav-link {
+            border-radius: 8px;
+            margin-right: 0.5rem;
+            font-weight: 500;
+        }
+
+        .nav-pills .nav-link.active {
+            background-color: var(--primary-color);
+        }
+
+        .progress {
+            height: 8px;
+            border-radius: 4px;
+        }
+
+        .badge {
+            font-size: 0.8rem;
+        }
+
+        .analytics-section {
+            margin-bottom: 2rem;
+        }
+
+        .section-title {
+            color: var(--dark-color);
+            font-weight: 600;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--primary-color);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--secondary-color);
+        }
+
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+        }
+
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-header">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1><i class="fas fa-chart-line"></i> Comprehensive Analytics Dashboard</h1>
+                    <p class="mb-0">Real-time insights into student performance and engagement</p>
+                </div>
+                <div class="col-md-4 text-end">
+                    <button class="btn btn-light me-2" onclick="exportToCSV()">
+                        <i class="fas fa-download"></i> Export CSV
+                    </button>
+                    <button class="btn btn-outline-light" onclick="refreshData()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <!-- Overview Metrics -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value" id="total-students">-</div>
+                    <div class="metric-label">Total Students</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value" id="avg-grade">-</div>
+                    <div class="metric-label">Average Grade %</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value" id="avg-attendance">-</div>
+                    <div class="metric-label">Average Attendance %</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value" id="total-badges">-</div>
+                    <div class="metric-label">Total Badges Earned</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <ul class="nav nav-pills mb-4" id="analyticsTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="overview-tab" data-bs-toggle="pill" data-bs-target="#overview" type="button">
+                    <i class="fas fa-tachometer-alt"></i> Overview
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="assignments-tab" data-bs-toggle="pill" data-bs-target="#assignments" type="button">
+                    <i class="fas fa-file-alt"></i> Assignments
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="interactive-tab" data-bs-toggle="pill" data-bs-target="#interactive" type="button">
+                    <i class="fas fa-play-circle"></i> Interactive Content
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="sessions-tab" data-bs-toggle="pill" data-bs-target="#sessions" type="button">
+                    <i class="fas fa-video"></i> Live Sessions
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="forums-tab" data-bs-toggle="pill" data-bs-target="#forums" type="button">
+                    <i class="fas fa-comments"></i> Forums
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="attendance-tab" data-bs-toggle="pill" data-bs-target="#attendance" type="button">
+                    <i class="fas fa-calendar-check"></i> Attendance
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="competencies-tab" data-bs-toggle="pill" data-bs-target="#competencies" type="button">
+                    <i class="fas fa-trophy"></i> Competencies
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="behavioral-tab" data-bs-toggle="pill" data-bs-target="#behavioral" type="button">
+                    <i class="fas fa-user-check"></i> Behavioral
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="analyticsTabContent">
+            <!-- Overview Tab -->
+            <div class="tab-pane fade show active" id="overview" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="chart-container">
+                            <h5 class="section-title">Grade Distribution</h5>
+                            <canvas id="gradeChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="chart-container">
+                            <h5 class="section-title">Attendance Trends</h5>
+                            <canvas id="attendanceChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="chart-container">
+                            <h5 class="section-title">Student Performance Overview</h5>
+                            <div class="table-responsive">
+                                <table class="table table-hover" id="overviewTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Student</th>
+                                            <th>Email</th>
+                                            <th>Avg Grade %</th>
+                                            <th>Attendance %</th>
+                                            <th>Badges</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td colspan="6" class="text-center">Loading data...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Assignments Tab -->
+            <div class="tab-pane fade" id="assignments" role="tabpanel">
+                <div class="analytics-section">
+                    <h4 class="section-title">Assignment Analytics</h4>
+                    <div class="table-responsive">
+                        <table class="table table-striped" id="assignmentsTable">
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th>Assignment</th>
+                                    <th>Avg Grade %</th>
+                                    <th>On-time Rate %</th>
+                                    <th>Resubmissions</th>
+                                    <th>Feedback Length</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" class="text-center">Loading data...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interactive Content Tab -->
+            <div class="tab-pane fade" id="interactive" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="chart-container">
+                            <h5 class="section-title">H5P Interactions</h5>
+                            <canvas id="h5pChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="chart-container">
+                            <h5 class="section-title">Video Completion</h5>
+                            <canvas id="videoChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="chart-container">
+                            <h5 class="section-title">SCORM Scores</h5>
+                            <canvas id="scormChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Sessions Tab -->
+            <div class="tab-pane fade" id="sessions" role="tabpanel">
+                <div class="analytics-section">
+                    <h4 class="section-title">Live Session Analytics</h4>
+                    <div class="table-responsive">
+                        <table class="table table-striped" id="sessionsTable">
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th>Sessions Attended</th>
+                                    <th>Punctuality %</th>
+                                    <th>Polls Answered</th>
+                                    <th>Hands Raised</th>
+                                    <th>Total Minutes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" class="text-center">Loading data...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Forums Tab -->
+            <div class="tab-pane fade" id="forums" role="tabpanel">
+                <div class="analytics-section">
+                    <h4 class="section-title">Forum & Collaboration Analytics</h4>
+                    <div class="table-responsive">
+                        <table class="table table-striped" id="forumsTable">
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th>Posts Created</th>
+                                    <th>Replies Made</th>
+                                    <th>Response Latency (min)</th>
+                                    <th>Instructor Engagement</th>
+                                    <th>Peer Rating</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" class="text-center">Loading data...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Attendance Tab -->
+            <div class="tab-pane fade" id="attendance" role="tabpanel">
+                <div class="analytics-section">
+                    <h4 class="section-title">Attendance Analytics</h4>
+                    <div class="table-responsive">
+                        <table class="table table-striped" id="attendanceTable">
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th>Module</th>
+                                    <th>Attendance %</th>
+                                    <th>Late Count</th>
+                                    <th>Absence Count</th>
+                                    <th>Streak</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" class="text-center">Loading data...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Competencies Tab -->
+            <div class="tab-pane fade" id="competencies" role="tabpanel">
+                <div class="analytics-section">
+                    <h4 class="section-title">Competency Framework Analytics</h4>
+                    <div class="table-responsive">
+                        <table class="table table-striped" id="competenciesTable">
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th>Competency</th>
+                                    <th>Rating</th>
+                                    <th>Proficiency</th>
+                                    <th>Evidence Count</th>
+                                    <th>Date Achieved</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" class="text-center">Loading data...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Behavioral Tab -->
+            <div class="tab-pane fade" id="behavioral" role="tabpanel">
+                <div class="analytics-section">
+                    <h4 class="section-title">Behavioral Quality & Professionalism</h4>
+                    <div class="table-responsive">
+                        <table class="table table-striped" id="behavioralTable">
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th>Deadline Adherence %</th>
+                                    <th>Learning Pace (hours)</th>
+                                    <th>Academic Integrity %</th>
+                                    <th>Active Days</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="5" class="text-center">Loading data...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Configuration
+        const MOODLE_URL = 'https://YOUR_MOODLE_URL';
+        const WS_TOKEN = 'YOUR_WS_TOKEN';
+        const COURSE_ID = 1; // Replace with actual course ID
+
+        let analyticsData = null;
+        let charts = {};
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAnalyticsData();
+            initializeCharts();
+        });
+
+        // Load analytics data from Moodle
+        async function loadAnalyticsData() {
+            try {
+                showLoading();
+                
+                const response = await fetch(`${MOODLE_URL}/webservice/rest/server.php`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        wstoken: WS_TOKEN,
+                        wsfunction: 'gradereport_analytics_get_comprehensive_analytics',
+                        moodlewsrestformat: 'json',
+                        courseid: COURSE_ID
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.exception) {
+                    throw new Error(data.message);
+                }
+
+                analyticsData = data;
+                updateOverviewMetrics();
+                populateTables();
+                updateCharts();
+                hideLoading();
+
+            } catch (error) {
+                console.error('Error loading analytics data:', error);
+                showError('Failed to load analytics data: ' + error.message);
+            }
+        }
+
+        // Update overview metrics
+        function updateOverviewMetrics() {
+            if (!analyticsData) return;
+
+            const totalStudents = analyticsData.length;
+            let totalGrade = 0;
+            let totalAttendance = 0;
+            let totalBadges = 0;
+
+            analyticsData.forEach(user => {
+                // Calculate average grade
+                if (user.analytics.assignments) {
+                    let userGrade = 0;
+                    let assignmentCount = 0;
+                    Object.values(user.analytics.assignments).forEach(assignment => {
+                        userGrade += assignment.avg_grade_pct || 0;
+                        assignmentCount++;
+                    });
+                    if (assignmentCount > 0) {
+                        totalGrade += userGrade / assignmentCount;
+                    }
+                }
+
+                // Calculate average attendance
+                if (user.analytics.attendance) {
+                    let userAttendance = 0;
+                    let attendanceCount = 0;
+                    Object.values(user.analytics.attendance).forEach(att => {
+                        userAttendance += att.attendance_rate || 0;
+                        attendanceCount++;
+                    });
+                    if (attendanceCount > 0) {
+                        totalAttendance += userAttendance / attendanceCount;
+                    }
+                }
+
+                // Count badges
+                if (user.analytics.badges) {
+                    totalBadges += Object.keys(user.analytics.badges).length;
+                }
+            });
+
+            document.getElementById('total-students').textContent = totalStudents;
+            document.getElementById('avg-grade').textContent = totalStudents > 0 ? Math.round(totalGrade / totalStudents) + '%' : '-';
+            document.getElementById('avg-attendance').textContent = totalStudents > 0 ? Math.round(totalAttendance / totalStudents) + '%' : '-';
+            document.getElementById('total-badges').textContent = totalBadges;
+        }
+
+        // Populate data tables
+        function populateTables() {
+            populateOverviewTable();
+            populateAssignmentsTable();
+            populateSessionsTable();
+            populateForumsTable();
+            populateAttendanceTable();
+            populateCompetenciesTable();
+            populateBehavioralTable();
+        }
+
+        function populateOverviewTable() {
+            const tbody = document.querySelector('#overviewTable tbody');
+            tbody.innerHTML = '';
+
+            analyticsData.forEach(user => {
+                const row = document.createElement('tr');
+                
+                // Calculate user metrics
+                let avgGrade = 0;
+                let avgAttendance = 0;
+                let badgeCount = 0;
+
+                if (user.analytics.assignments) {
+                    let totalGrade = 0;
+                    let count = 0;
+                    Object.values(user.analytics.assignments).forEach(assignment => {
+                        totalGrade += assignment.avg_grade_pct || 0;
+                        count++;
+                    });
+                    avgGrade = count > 0 ? Math.round(totalGrade / count) : 0;
+                }
+
+                if (user.analytics.attendance) {
+                    let totalAttendance = 0;
+                    let count = 0;
+                    Object.values(user.analytics.attendance).forEach(att => {
+                        totalAttendance += att.attendance_rate || 0;
+                        count++;
+                    });
+                    avgAttendance = count > 0 ? Math.round(totalAttendance / count) : 0;
+                }
+
+                if (user.analytics.badges) {
+                    badgeCount = Object.keys(user.analytics.badges).length;
+                }
+
+                const status = avgGrade >= 80 ? 'Excellent' : avgGrade >= 60 ? 'Good' : 'Needs Improvement';
+                const statusClass = avgGrade >= 80 ? 'success' : avgGrade >= 60 ? 'warning' : 'danger';
+
+                row.innerHTML = `
+                    <td>${user.firstname} ${user.lastname}</td>
+                    <td>${user.email}</td>
+                    <td><span class="badge bg-primary">${avgGrade}%</span></td>
+                    <td><span class="badge bg-info">${avgAttendance}%</span></td>
+                    <td><span class="badge bg-warning">${badgeCount}</span></td>
+                    <td><span class="badge bg-${statusClass}">${status}</span></td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function populateAssignmentsTable() {
+            const tbody = document.querySelector('#assignmentsTable tbody');
+            tbody.innerHTML = '';
+
+            analyticsData.forEach(user => {
+                if (user.analytics.assignments) {
+                    Object.entries(user.analytics.assignments).forEach(([assignId, assignment]) => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${user.firstname} ${user.lastname}</td>
+                            <td>${assignment.name}</td>
+                            <td><span class="badge bg-primary">${assignment.avg_grade_pct}%</span></td>
+                            <td><span class="badge bg-success">${assignment.ontime_submission_rate}%</span></td>
+                            <td><span class="badge bg-warning">${assignment.resubmission_count || 0}</span></td>
+                            <td>${assignment.feedback_richness ? Math.round(assignment.feedback_richness.avg_length) + ' chars' : '-'}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }
+            });
+        }
+
+        function populateSessionsTable() {
+            const tbody = document.querySelector('#sessionsTable tbody');
+            tbody.innerHTML = '';
+
+            analyticsData.forEach(user => {
+                if (user.analytics.live_sessions) {
+                    Object.values(user.analytics.live_sessions).forEach(sessionType => {
+                        Object.values(sessionType).forEach(session => {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${user.firstname} ${user.lastname}</td>
+                                <td><span class="badge bg-primary">${session.sessions_attended}</span></td>
+                                <td><span class="badge bg-success">${session.punctuality_rate}%</span></td>
+                                <td><span class="badge bg-info">${session.polls_answered || 0}</span></td>
+                                <td><span class="badge bg-warning">${session.hands_raised || 0}</span></td>
+                                <td>${session.total_minutes || 0}</td>
+                            `;
+                            tbody.appendChild(row);
+                        });
+                    });
+                }
+            });
+        }
+
+        function populateForumsTable() {
+            const tbody = document.querySelector('#forumsTable tbody');
+            tbody.innerHTML = '';
+
+            analyticsData.forEach(user => {
+                if (user.analytics.forums) {
+                    Object.values(user.analytics.forums).forEach(forum => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${user.firstname} ${user.lastname}</td>
+                            <td><span class="badge bg-primary">${forum.posts_created}</span></td>
+                            <td><span class="badge bg-info">${forum.replies_made}</span></td>
+                            <td>${Math.round(forum.avg_response_latency || 0)}</td>
+                            <td><span class="badge bg-success">${forum.instructor_replies || 0}</span></td>
+                            <td><span class="badge bg-warning">${forum.avg_peer_rating || 0}</span></td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }
+            });
+        }
+
+        function populateAttendanceTable() {
+            const tbody = document.querySelector('#attendanceTable tbody');
+            tbody.innerHTML = '';
+
+            analyticsData.forEach(user => {
+                if (user.analytics.attendance) {
+                    Object.values(user.analytics.attendance).forEach(attendance => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${user.firstname} ${user.lastname}</td>
+                            <td>${attendance.module_name}</td>
+                            <td><span class="badge bg-success">${attendance.attendance_rate}%</span></td>
+                            <td><span class="badge bg-warning">${attendance.late_count}</span></td>
+                            <td><span class="badge bg-danger">${attendance.absence_count}</span></td>
+                            <td><span class="badge bg-info">${attendance.attendance_streak}</span></td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }
+            });
+        }
+
+        function populateCompetenciesTable() {
+            const tbody = document.querySelector('#competenciesTable tbody');
+            tbody.innerHTML = '';
+
+            analyticsData.forEach(user => {
+                if (user.analytics.competencies) {
+                    Object.values(user.analytics.competencies).forEach(competency => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${user.firstname} ${user.lastname}</td>
+                            <td>${competency.shortname}</td>
+                            <td><span class="badge bg-primary">${competency.rating}</span></td>
+                            <td><span class="badge ${competency.proficiency_achieved ? 'bg-success' : 'bg-warning'}">${competency.proficiency_achieved ? 'Yes' : 'No'}</span></td>
+                            <td><span class="badge bg-info">${competency.evidence_count || 0}</span></td>
+                            <td>${competency.date_achieved ? new Date(competency.date_achieved * 1000).toLocaleDateString() : '-'}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }
+            });
+        }
+
+        function populateBehavioralTable() {
+            const tbody = document.querySelector('#behavioralTable tbody');
+            tbody.innerHTML = '';
+
+            analyticsData.forEach(user => {
+                const row = document.createElement('tr');
+                const behavioral = user.analytics.behavioral || {};
+                const deadlineAdherence = behavioral.deadline_adherence || 0;
+                const learningPace = behavioral.learning_pace?.avg_pace_hours || 0;
+                const academicIntegrity = behavioral.academic_integrity?.avg_similarity || 0;
+                const activeDays = behavioral.learning_pace?.active_days || 0;
+
+                row.innerHTML = `
+                    <td>${user.firstname} ${user.lastname}</td>
+                    <td><span class="badge bg-success">${deadlineAdherence}%</span></td>
+                    <td><span class="badge bg-info">${learningPace}</span></td>
+                    <td><span class="badge ${academicIntegrity < 20 ? 'bg-success' : academicIntegrity < 50 ? 'bg-warning' : 'bg-danger'}">${academicIntegrity}%</span></td>
+                    <td><span class="badge bg-primary">${activeDays}</span></td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // Initialize charts
+        function initializeCharts() {
+            // Grade Distribution Chart
+            const gradeCtx = document.getElementById('gradeChart').getContext('2d');
+            charts.grade = new Chart(gradeCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['A (90-100)', 'B (80-89)', 'C (70-79)', 'D (60-69)', 'F (0-59)'],
+                    datasets: [{
+                        data: [0, 0, 0, 0, 0],
+                        backgroundColor: ['#28a745', '#20c997', '#ffc107', '#fd7e14', '#dc3545']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+
+            // Attendance Chart
+            const attendanceCtx = document.getElementById('attendanceChart').getContext('2d');
+            charts.attendance = new Chart(attendanceCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5', 'Week 6'],
+                    datasets: [{
+                        label: 'Average Attendance %',
+                        data: [85, 87, 82, 90, 88, 92],
+                        borderColor: '#007bff',
+                        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+
+            // H5P Chart
+            const h5pCtx = document.getElementById('h5pChart').getContext('2d');
+            charts.h5p = new Chart(h5pCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Interactions'],
+                    datasets: [{
+                        label: 'Total Interactions',
+                        data: [0],
+                        backgroundColor: '#17a2b8'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Video Chart
+            const videoCtx = document.getElementById('videoChart').getContext('2d');
+            charts.video = new Chart(videoCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Completion Rate'],
+                    datasets: [{
+                        label: 'Average Completion %',
+                        data: [0],
+                        backgroundColor: '#28a745'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+
+            // SCORM Chart
+            const scormCtx = document.getElementById('scormChart').getContext('2d');
+            charts.scorm = new Chart(scormCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Average Score'],
+                    datasets: [{
+                        label: 'SCORM Score',
+                        data: [0],
+                        backgroundColor: '#ffc107'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update charts with real data
+        function updateCharts() {
+            if (!analyticsData) return;
+
+            // Update grade distribution
+            const gradeDistribution = [0, 0, 0, 0, 0];
+            analyticsData.forEach(user => {
+                if (user.analytics.assignments) {
+                    let avgGrade = 0;
+                    let count = 0;
+                    Object.values(user.analytics.assignments).forEach(assignment => {
+                        avgGrade += assignment.avg_grade_pct || 0;
+                        count++;
+                    });
+                    if (count > 0) {
+                        avgGrade = avgGrade / count;
+                        if (avgGrade >= 90) gradeDistribution[0]++;
+                        else if (avgGrade >= 80) gradeDistribution[1]++;
+                        else if (avgGrade >= 70) gradeDistribution[2]++;
+                        else if (avgGrade >= 60) gradeDistribution[3]++;
+                        else gradeDistribution[4]++;
+                    }
+                }
+            });
+            charts.grade.data.datasets[0].data = gradeDistribution;
+            charts.grade.update();
+
+            // Update H5P chart
+            let totalH5PInteractions = 0;
+            analyticsData.forEach(user => {
+                if (user.analytics.interactive_content?.h5p) {
+                    Object.values(user.analytics.interactive_content.h5p).forEach(h5p => {
+                        totalH5PInteractions += h5p.interaction_count || 0;
+                    });
+                }
+            });
+            charts.h5p.data.datasets[0].data = [totalH5PInteractions];
+            charts.h5p.update();
+
+            // Update video chart
+            let totalVideoCompletion = 0;
+            let videoCount = 0;
+            analyticsData.forEach(user => {
+                if (user.analytics.interactive_content?.video) {
+                    Object.values(user.analytics.interactive_content.video).forEach(video => {
+                        totalVideoCompletion += video.completion_rate || 0;
+                        videoCount++;
+                    });
+                }
+            });
+            const avgVideoCompletion = videoCount > 0 ? totalVideoCompletion / videoCount : 0;
+            charts.video.data.datasets[0].data = [avgVideoCompletion];
+            charts.video.update();
+
+            // Update SCORM chart
+            let totalSCORMScore = 0;
+            let scormCount = 0;
+            analyticsData.forEach(user => {
+                if (user.analytics.interactive_content?.scorm) {
+                    Object.values(user.analytics.interactive_content.scorm).forEach(scorm => {
+                        totalSCORMScore += scorm.avg_score || 0;
+                        scormCount++;
+                    });
+                }
+            });
+            const avgSCORMScore = scormCount > 0 ? totalSCORMScore / scormCount : 0;
+            charts.scorm.data.datasets[0].data = [avgSCORMScore];
+            charts.scorm.update();
+        }
+
+        // Utility functions
+        function showLoading() {
+            document.querySelectorAll('tbody').forEach(tbody => {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center">Loading data...</td></tr>';
+            });
+        }
+
+        function hideLoading() {
+            // Loading is hidden when tables are populated
+        }
+
+        function showError(message) {
+            const container = document.querySelector('.container-fluid');
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
+            container.insertBefore(errorDiv, container.firstChild);
+        }
+
+        function refreshData() {
+            loadAnalyticsData();
+        }
+
+        function exportToCSV() {
+            if (!analyticsData) {
+                alert('No data to export');
+                return;
+            }
+
+            let csv = 'User ID,First Name,Last Name,Email,Avg Grade %,Attendance %,Badges,Competencies,Posts Created,Replies Made\n';
+            
+            analyticsData.forEach(user => {
+                let avgGrade = 0;
+                let avgAttendance = 0;
+                let badgeCount = 0;
+                let competencyCount = 0;
+                let postsCreated = 0;
+                let repliesMade = 0;
+
+                // Calculate metrics
+                if (user.analytics.assignments) {
+                    let totalGrade = 0;
+                    let count = 0;
+                    Object.values(user.analytics.assignments).forEach(assignment => {
+                        totalGrade += assignment.avg_grade_pct || 0;
+                        count++;
+                    });
+                    avgGrade = count > 0 ? Math.round(totalGrade / count) : 0;
+                }
+
+                if (user.analytics.attendance) {
+                    let totalAttendance = 0;
+                    let count = 0;
+                    Object.values(user.analytics.attendance).forEach(att => {
+                        totalAttendance += att.attendance_rate || 0;
+                        count++;
+                    });
+                    avgAttendance = count > 0 ? Math.round(totalAttendance / count) : 0;
+                }
+
+                if (user.analytics.badges) {
+                    badgeCount = Object.keys(user.analytics.badges).length;
+                }
+
+                if (user.analytics.competencies) {
+                    competencyCount = Object.keys(user.analytics.competencies).length;
+                }
+
+                if (user.analytics.forums) {
+                    Object.values(user.analytics.forums).forEach(forum => {
+                        postsCreated += forum.posts_created || 0;
+                        repliesMade += forum.replies_made || 0;
+                    });
+                }
+
+                csv += `${user.userid},${user.firstname},${user.lastname},${user.email},${avgGrade},${avgAttendance},${badgeCount},${competencyCount},${postsCreated},${repliesMade}\n`;
+            });
+
+            // Download CSV
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `analytics_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
