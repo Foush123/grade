@@ -442,9 +442,8 @@ if ($export === 'csv') {
                                             GROUP BY userid", $uparams + ['courseid' => $courseid]);
     }
 
-    // Enhanced Analytics Data Collection
-    require_once($CFG->dirroot . '/grade/report/analytics/lib.php');
-    $analytics_data = gradereport_analytics_get_comprehensive_data($courseid, $userids);
+    // Enhanced Analytics Data Collection - Integrated directly into grader report
+    $analytics_data = gradereport_grader_get_analytics_data($courseid, $userids);
 
     // Feedback richness (assign): presence of any comments feedback.
     $feedbackrich = array_fill_keys($userids, 'N');
