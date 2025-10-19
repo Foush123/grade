@@ -134,6 +134,29 @@ if ($export === 'csv') {
             get_string('csv_competency_proficiency', 'gradereport_grader'),
             get_string('csv_competency_achieveddate', 'gradereport_grader'),
             get_string('csv_competency_lastupdated', 'gradereport_grader'),
+            // Enhanced Analytics Fields
+            'H5P Interactions',
+            'Video Completion %',
+            'SCORM Score',
+            'Live Sessions Attended',
+            'Punctuality %',
+            'Polls Answered',
+            'Hands Raised',
+            'Forum Response Latency (min)',
+            'Instructor Engagement',
+            'Peer Rating',
+            'Attendance %',
+            'Late Count',
+            'Absence Count',
+            'Attendance Streak',
+            'Competency Evidence Count',
+            'Badges Earned Count',
+            'Certificate Achieved',
+            'Deadline Adherence %',
+            'Learning Pace (hours)',
+            'Academic Integrity %',
+            'TA Rating %',
+            'TA Notes Count'
         ]);
         fclose($out);
         exit;
@@ -419,6 +442,10 @@ if ($export === 'csv') {
                                             GROUP BY userid", $uparams + ['courseid' => $courseid]);
     }
 
+    // Enhanced Analytics Data Collection
+    require_once($CFG->dirroot . '/grade/report/analytics/lib.php');
+    $analytics_data = gradereport_analytics_get_comprehensive_data($courseid, $userids);
+
     // Feedback richness (assign): presence of any comments feedback.
     $feedbackrich = array_fill_keys($userids, 'N');
     if ($DB->get_manager()->table_exists('assignfeedback_comments') && $DB->get_manager()->table_exists('assign_grades') && $DB->get_manager()->table_exists('assign')) {
@@ -466,6 +493,29 @@ if ($export === 'csv') {
         get_string('csv_competency_proficiency', 'gradereport_grader'),
         get_string('csv_competency_achieveddate', 'gradereport_grader'),
         get_string('csv_competency_lastupdated', 'gradereport_grader'),
+        // Enhanced Analytics Fields
+        'H5P Interactions',
+        'Video Completion %',
+        'SCORM Score',
+        'Live Sessions Attended',
+        'Punctuality %',
+        'Polls Answered',
+        'Hands Raised',
+        'Forum Response Latency (min)',
+        'Instructor Engagement',
+        'Peer Rating',
+        'Attendance %',
+        'Late Count',
+        'Absence Count',
+        'Attendance Streak',
+        'Competency Evidence Count',
+        'Badges Earned Count',
+        'Certificate Achieved',
+        'Deadline Adherence %',
+        'Learning Pace (hours)',
+        'Academic Integrity %',
+        'TA Rating %',
+        'TA Notes Count'
     ]);
 
     foreach ($users as $u) {
@@ -488,6 +538,125 @@ if ($export === 'csv') {
         $cdate = isset($competencies[$uid]->achieved) && $competencies[$uid]->achieved ? userdate($competencies[$uid]->achieved, get_string('strftimedatetimeshort')) : '';
         $clu = isset($competencies[$uid]->lastupdated) && $competencies[$uid]->lastupdated ? userdate($competencies[$uid]->lastupdated, get_string('strftimedatetimeshort')) : '';
         $frich = $feedbackrich[$uid] ?? 'N';
+        
+        // Enhanced Analytics Data
+        $analytics = $analytics_data[$uid] ?? [];
+        
+        // H5P Interactions
+        $h5p_interactions = 0;
+        if (isset($analytics['interactive_content']['h5p'])) {
+            foreach ($analytics['interactive_content']['h5p'] as $h5p) {
+                $h5p_interactions += $h5p['interaction_count'] ?? 0;
+            }
+        }
+        
+        // Video Completion %
+        $video_completion = 0;
+        if (isset($analytics['interactive_content']['video'])) {
+            $total_completion = 0;
+            $video_count = 0;
+            foreach ($analytics['interactive_content']['video'] as $video) {
+                $total_completion += $video['completion_rate'] ?? 0;
+                $video_count++;
+            }
+            $video_completion = $video_count > 0 ? round($total_completion / $video_count, 2) : 0;
+        }
+        
+        // SCORM Score
+        $scorm_score = 0;
+        if (isset($analytics['interactive_content']['scorm'])) {
+            $total_score = 0;
+            $scorm_count = 0;
+            foreach ($analytics['interactive_content']['scorm'] as $scorm) {
+                $total_score += $scorm['avg_score'] ?? 0;
+                $scorm_count++;
+            }
+            $scorm_score = $scorm_count > 0 ? round($total_score / $scorm_count, 2) : 0;
+        }
+        
+        // Live Sessions Data
+        $sessions_attended = 0;
+        $punctuality_rate = 0;
+        $polls_answered = 0;
+        $hands_raised = 0;
+        if (isset($analytics['live_sessions'])) {
+            foreach ($analytics['live_sessions'] as $session_type) {
+                foreach ($session_type as $session) {
+                    $sessions_attended += $session['sessions_attended'] ?? 0;
+                    $punctuality_rate += $session['punctuality_rate'] ?? 0;
+                    $polls_answered += $session['polls_answered'] ?? 0;
+                    $hands_raised += $session['hands_raised'] ?? 0;
+                }
+            }
+        }
+        
+        // Forum Data
+        $response_latency = 0;
+        $instructor_engagement = 0;
+        $peer_rating = 0;
+        if (isset($analytics['forums'])) {
+            $total_latency = 0;
+            $forum_count = 0;
+            foreach ($analytics['forums'] as $forum) {
+                $total_latency += $forum['avg_response_latency'] ?? 0;
+                $instructor_engagement += $forum['instructor_replies'] ?? 0;
+                $peer_rating += $forum['avg_peer_rating'] ?? 0;
+                $forum_count++;
+            }
+            $response_latency = $forum_count > 0 ? round($total_latency / $forum_count, 2) : 0;
+        }
+        
+        // Attendance Data
+        $attendance_rate = 0;
+        $late_count = 0;
+        $absence_count = 0;
+        $attendance_streak = 0;
+        if (isset($analytics['attendance'])) {
+            $total_attendance = 0;
+            $attendance_modules = 0;
+            foreach ($analytics['attendance'] as $attendance) {
+                $total_attendance += $attendance['attendance_rate'] ?? 0;
+                $late_count += $attendance['late_count'] ?? 0;
+                $absence_count += $attendance['absence_count'] ?? 0;
+                $attendance_streak += $attendance['attendance_streak'] ?? 0;
+                $attendance_modules++;
+            }
+            $attendance_rate = $attendance_modules > 0 ? round($total_attendance / $attendance_modules, 2) : 0;
+        }
+        
+        // Competency Evidence Count
+        $competency_evidence = 0;
+        if (isset($analytics['competencies'])) {
+            foreach ($analytics['competencies'] as $competency) {
+                $competency_evidence += $competency['evidence_count'] ?? 0;
+            }
+        }
+        
+        // Badges Earned Count
+        $badges_earned = isset($analytics['badges']) ? count($analytics['badges']) : 0;
+        
+        // Certificate Achieved
+        $certificate_achieved = isset($analytics['certificates']) ? count($analytics['certificates']) : 0;
+        
+        // Behavioral Data
+        $deadline_adherence = $analytics['behavioral']['deadline_adherence'] ?? 0;
+        $learning_pace = $analytics['behavioral']['learning_pace']['avg_pace_hours'] ?? 0;
+        $academic_integrity = $analytics['behavioral']['academic_integrity']['avg_similarity'] ?? 0;
+        
+        // TA Evaluation Data
+        $ta_rating = 0;
+        $ta_notes = 0;
+        if (isset($analytics['ta_evaluation'])) {
+            $total_ta_rating = 0;
+            $ta_count = 0;
+            foreach ($analytics['ta_evaluation'] as $ta_eval) {
+                $total_ta_rating += $ta_eval['avg_ta_rating'] ?? 0;
+                $ta_notes += $ta_eval['feedback_count'] ?? 0;
+                $ta_count++;
+            }
+            $ta_rating = $ta_count > 0 ? round($total_ta_rating / $ta_count, 2) : 0;
+        }
+        
         fputcsv($out, [
             $fullname,
             $email,
@@ -514,7 +683,30 @@ if ($export === 'csv') {
             $cp,
             $cpprof,
             $cdate,
-            $clu
+            $clu,
+            // Enhanced Analytics Fields
+            $h5p_interactions,
+            $video_completion,
+            $scorm_score,
+            $sessions_attended,
+            $punctuality_rate,
+            $polls_answered,
+            $hands_raised,
+            $response_latency,
+            $instructor_engagement,
+            $peer_rating,
+            $attendance_rate,
+            $late_count,
+            $absence_count,
+            $attendance_streak,
+            $competency_evidence,
+            $badges_earned,
+            $certificate_achieved,
+            $deadline_adherence,
+            $learning_pace,
+            $academic_integrity,
+            $ta_rating,
+            $ta_notes
         ]);
     }
     fclose($out);
