@@ -277,3 +277,41 @@
         padding-right: 6em;
     }
 }
+
+/**
+ * Analytics columns styling
+ */
+.path-grade-report-grader .analytics-header {
+    background-color: #f8f9fa;
+    font-weight: bold;
+    text-align: center;
+    font-size: 12px;
+    padding: 8px 4px;
+    border-left: 2px solid #007bff;
+    min-width: 80px;
+    max-width: 120px;
+}
+
+.path-grade-report-grader .analytics-cell {
+    text-align: center;
+    font-size: 11px;
+    padding: 4px 2px;
+    background-color: #fafafa;
+    border-left: 1px solid #e9ecef;
+    min-width: 60px;
+    max-width: 100px;
+    word-wrap: break-word;
+}
+
+.path-grade-report-grader .analytics-cell:hover {
+    background-color: #e9ecef;
+}
+
+/* Analytics section separator */
+.path-grade-report-grader .analytics-header:first-of-type {
+    border-left: 3px solid #28a745;
+}
+
+.path-grade-report-grader .analytics-cell:first-of-type {
+    border-left: 2px solid #28a745;
+}

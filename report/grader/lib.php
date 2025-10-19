@@ -960,6 +960,9 @@ class grade_report_grader extends grade_report {
             $cache->set(get_class($this), $scalesarray);
         }
 
+        // Add analytics columns header
+        $analytics_columns = $this->get_analytics_columns_header();
+        
         foreach ($this->gtree->get_levels() as $row) {
             $headingrow = new html_table_row();
             $headingrow->attributes['class'] = 'heading_name_row';
@@ -1070,6 +1073,12 @@ class grade_report_grader extends grade_report {
                     $headingrow->cells[] = $itemcell;
                 }
             }
+            
+            // Add analytics columns to the header row
+            foreach ($analytics_columns as $analytics_col) {
+                $headingrow->cells[] = $analytics_col;
+            }
+            
             $rows[] = $headingrow;
         }
 
@@ -1337,6 +1346,13 @@ class grade_report_grader extends grade_report {
 
                 $itemrow->cells[] = $itemcell;
             }
+            
+            // Add analytics data cells to the user row
+            $analytics_cells = $this->get_analytics_cells_for_user($userid);
+            foreach ($analytics_cells as $analytics_cell) {
+                $itemrow->cells[] = $analytics_cell;
+            }
+            
             $rows[] = $itemrow;
         }
 
@@ -2905,5 +2921,287 @@ function gradereport_grader_get_ta_evaluation_analytics($courseid, $userids, &$a
             'feedback_count' => $ta->feedback_count,
             'avg_feedback_length' => round($ta->avg_feedback_length, 2)
         );
+    }
+    
+    /**
+     * Get analytics columns header cells
+     * @return array Array of header cells for analytics columns
+     */
+    private function get_analytics_columns_header() {
+        global $OUTPUT;
+        
+        $analytics_headers = [
+            'H5P Interactions',
+            'Video Completion %',
+            'SCORM Score',
+            'Live Sessions Attended',
+            'Punctuality %',
+            'Polls Answered',
+            'Hands Raised',
+            'Forum Response Latency (min)',
+            'Instructor Engagement',
+            'Peer Rating',
+            'Attendance %',
+            'Late Count',
+            'Absence Count',
+            'Attendance Streak',
+            'Competency Evidence Count',
+            'Badges Earned Count',
+            'Certificate Achieved',
+            'Deadline Adherence %',
+            'Learning Pace (hours)',
+            'Academic Integrity %',
+            'TA Rating %',
+            'TA Notes Count'
+        ];
+        
+        $header_cells = [];
+        foreach ($analytics_headers as $header) {
+            $cell = new html_table_cell();
+            $cell->header = true;
+            $cell->scope = 'col';
+            $cell->attributes['class'] = 'analytics-header';
+            $cell->text = $header;
+            $header_cells[] = $cell;
+        }
+        
+        return $header_cells;
+    }
+    
+    /**
+     * Get analytics data cells for a specific user
+     * @param int $userid User ID
+     * @return array Array of cells with analytics data
+     */
+    private function get_analytics_cells_for_user($userid) {
+        global $OUTPUT;
+        
+        // Get analytics data for this user
+        $analytics_data = gradereport_grader_get_analytics_data($this->courseid, [$userid]);
+        $user_analytics = $analytics_data[$userid] ?? [];
+        
+        $cells = [];
+        
+        // H5P Interactions
+        $h5p_interactions = 0;
+        if (isset($user_analytics['interactive_content']['h5p'])) {
+            foreach ($user_analytics['interactive_content']['h5p'] as $h5p) {
+                $h5p_interactions += $h5p['interaction_count'] ?? 0;
+            }
+        }
+        $cells[] = $this->create_analytics_cell($h5p_interactions);
+        
+        // Video Completion %
+        $video_completion = 0;
+        if (isset($user_analytics['interactive_content']['video'])) {
+            $total_completion = 0;
+            $video_count = 0;
+            foreach ($user_analytics['interactive_content']['video'] as $video) {
+                $total_completion += $video['completion_rate'] ?? 0;
+                $video_count++;
+            }
+            $video_completion = $video_count > 0 ? round($total_completion / $video_count, 2) : 0;
+        }
+        $cells[] = $this->create_analytics_cell($video_completion . '%');
+        
+        // SCORM Score
+        $scorm_score = 0;
+        if (isset($user_analytics['interactive_content']['scorm'])) {
+            $total_score = 0;
+            $scorm_count = 0;
+            foreach ($user_analytics['interactive_content']['scorm'] as $scorm) {
+                $total_score += $scorm['avg_score'] ?? 0;
+                $scorm_count++;
+            }
+            $scorm_score = $scorm_count > 0 ? round($total_score / $scorm_count, 2) : 0;
+        }
+        $cells[] = $this->create_analytics_cell($scorm_score);
+        
+        // Live Sessions Attended
+        $sessions_attended = 0;
+        if (isset($user_analytics['live_sessions']['bigbluebutton']['aggregate'])) {
+            $sessions_attended = $user_analytics['live_sessions']['bigbluebutton']['aggregate']['sessions_attended'] ?? 0;
+        }
+        $cells[] = $this->create_analytics_cell($sessions_attended);
+        
+        // Punctuality %
+        $punctuality_rate = 0;
+        if (isset($user_analytics['live_sessions']['bigbluebutton']['aggregate'])) {
+            $punctuality_rate = $user_analytics['live_sessions']['bigbluebutton']['aggregate']['punctuality_rate'] ?? 0;
+        }
+        $cells[] = $this->create_analytics_cell($punctuality_rate . '%');
+        
+        // Polls Answered
+        $polls_answered = 0;
+        if (isset($user_analytics['live_sessions']['bigbluebutton']['aggregate'])) {
+            $polls_answered = $user_analytics['live_sessions']['bigbluebutton']['aggregate']['polls_answered'] ?? 0;
+        }
+        $cells[] = $this->create_analytics_cell($polls_answered);
+        
+        // Hands Raised
+        $hands_raised = 0;
+        if (isset($user_analytics['live_sessions']['bigbluebutton']['aggregate'])) {
+            $hands_raised = $user_analytics['live_sessions']['bigbluebutton']['aggregate']['hands_raised'] ?? 0;
+        }
+        $cells[] = $this->create_analytics_cell($hands_raised);
+        
+        // Forum Response Latency
+        $response_latency = 0;
+        if (isset($user_analytics['forums'])) {
+            $total_latency = 0;
+            $forum_count = 0;
+            foreach ($user_analytics['forums'] as $forum) {
+                $total_latency += $forum['avg_response_latency'] ?? 0;
+                $forum_count++;
+            }
+            $response_latency = $forum_count > 0 ? round($total_latency / $forum_count, 2) : 0;
+        }
+        $cells[] = $this->create_analytics_cell($response_latency);
+        
+        // Instructor Engagement
+        $instructor_engagement = 0;
+        if (isset($user_analytics['forums'])) {
+            foreach ($user_analytics['forums'] as $forum) {
+                $instructor_engagement += $forum['instructor_replies'] ?? 0;
+            }
+        }
+        $cells[] = $this->create_analytics_cell($instructor_engagement);
+        
+        // Peer Rating
+        $peer_rating = 0;
+        if (isset($user_analytics['forums'])) {
+            $total_rating = 0;
+            $rating_count = 0;
+            foreach ($user_analytics['forums'] as $forum) {
+                if (isset($forum['avg_peer_rating']) && $forum['avg_peer_rating'] > 0) {
+                    $total_rating += $forum['avg_peer_rating'];
+                    $rating_count++;
+                }
+            }
+            $peer_rating = $rating_count > 0 ? round($total_rating / $rating_count, 2) : 0;
+        }
+        $cells[] = $this->create_analytics_cell($peer_rating);
+        
+        // Attendance %
+        $attendance_rate = 0;
+        if (isset($user_analytics['attendance'])) {
+            $total_attendance = 0;
+            $attendance_count = 0;
+            foreach ($user_analytics['attendance'] as $att) {
+                $total_attendance += $att['attendance_rate'] ?? 0;
+                $attendance_count++;
+            }
+            $attendance_rate = $attendance_count > 0 ? round($total_attendance / $attendance_count, 2) : 0;
+        }
+        $cells[] = $this->create_analytics_cell($attendance_rate . '%');
+        
+        // Late Count
+        $late_count = 0;
+        if (isset($user_analytics['attendance'])) {
+            foreach ($user_analytics['attendance'] as $att) {
+                $late_count += $att['late_count'] ?? 0;
+            }
+        }
+        $cells[] = $this->create_analytics_cell($late_count);
+        
+        // Absence Count
+        $absence_count = 0;
+        if (isset($user_analytics['attendance'])) {
+            foreach ($user_analytics['attendance'] as $att) {
+                $absence_count += $att['absence_count'] ?? 0;
+            }
+        }
+        $cells[] = $this->create_analytics_cell($absence_count);
+        
+        // Attendance Streak
+        $attendance_streak = 0;
+        if (isset($user_analytics['attendance'])) {
+            foreach ($user_analytics['attendance'] as $att) {
+                $attendance_streak = max($attendance_streak, $att['attendance_streak'] ?? 0);
+            }
+        }
+        $cells[] = $this->create_analytics_cell($attendance_streak);
+        
+        // Competency Evidence Count
+        $competency_evidence = 0;
+        if (isset($user_analytics['competencies'])) {
+            foreach ($user_analytics['competencies'] as $comp) {
+                $competency_evidence += $comp['evidence_count'] ?? 0;
+            }
+        }
+        $cells[] = $this->create_analytics_cell($competency_evidence);
+        
+        // Badges Earned Count
+        $badges_earned = 0;
+        if (isset($user_analytics['badges'])) {
+            $badges_earned = count($user_analytics['badges']);
+        }
+        $cells[] = $this->create_analytics_cell($badges_earned);
+        
+        // Certificate Achieved
+        $certificate_achieved = 'N';
+        if (isset($user_analytics['certificates']) && count($user_analytics['certificates']) > 0) {
+            $certificate_achieved = 'Y';
+        }
+        $cells[] = $this->create_analytics_cell($certificate_achieved);
+        
+        // Deadline Adherence %
+        $deadline_adherence = 0;
+        if (isset($user_analytics['behavioral']['deadline_adherence'])) {
+            $deadline_adherence = $user_analytics['behavioral']['deadline_adherence'];
+        }
+        $cells[] = $this->create_analytics_cell($deadline_adherence . '%');
+        
+        // Learning Pace
+        $learning_pace = 0;
+        if (isset($user_analytics['behavioral']['learning_pace']['avg_pace_hours'])) {
+            $learning_pace = $user_analytics['behavioral']['learning_pace']['avg_pace_hours'];
+        }
+        $cells[] = $this->create_analytics_cell($learning_pace);
+        
+        // Academic Integrity %
+        $academic_integrity = 0;
+        if (isset($user_analytics['behavioral']['academic_integrity']['avg_similarity'])) {
+            $academic_integrity = $user_analytics['behavioral']['academic_integrity']['avg_similarity'];
+        }
+        $cells[] = $this->create_analytics_cell($academic_integrity . '%');
+        
+        // TA Rating %
+        $ta_rating = 0;
+        if (isset($user_analytics['ta_evaluation'])) {
+            $total_rating = 0;
+            $rating_count = 0;
+            foreach ($user_analytics['ta_evaluation'] as $ta) {
+                if (isset($ta['avg_ta_rating']) && $ta['avg_ta_rating'] > 0) {
+                    $total_rating += $ta['avg_ta_rating'];
+                    $rating_count++;
+                }
+            }
+            $ta_rating = $rating_count > 0 ? round($total_rating / $rating_count, 2) : 0;
+        }
+        $cells[] = $this->create_analytics_cell($ta_rating . '%');
+        
+        // TA Notes Count
+        $ta_notes = 0;
+        if (isset($user_analytics['ta_evaluation'])) {
+            foreach ($user_analytics['ta_evaluation'] as $ta) {
+                $ta_notes += $ta['feedback_count'] ?? 0;
+            }
+        }
+        $cells[] = $this->create_analytics_cell($ta_notes);
+        
+        return $cells;
+    }
+    
+    /**
+     * Create an analytics cell with the given value
+     * @param mixed $value The value to display in the cell
+     * @return html_table_cell The formatted cell
+     */
+    private function create_analytics_cell($value) {
+        $cell = new html_table_cell();
+        $cell->attributes['class'] = 'analytics-cell';
+        $cell->text = $value;
+        return $cell;
     }
 }
