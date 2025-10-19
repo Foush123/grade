@@ -2549,30 +2549,30 @@ function gradereport_grader_get_interactive_content_analytics($courseid, $userid
  */
 function gradereport_grader_get_live_session_analytics($courseid, $userids, &$analytics) {
     global $DB;
-    
+
     list($usql, $uparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'users');
-    
-    // BigBlueButton sessions
-    if ($DB->get_manager()->table_exists('bigbluebuttonbn_logs')) {
-        $sql = "SELECT bl.userid, bl.bigbluebuttonbnid, bl.meetingid,
-                       COUNT(bl.id) as sessions_attended,
-                       SUM(bl.duration) as total_minutes,
-                       AVG(CASE WHEN bl.event = 'meeting_joined' THEN 1 ELSE 0 END) as punctuality_rate,
-                       COUNT(CASE WHEN bl.event = 'poll_answered' THEN 1 END) as polls_answered,
-                       COUNT(CASE WHEN bl.event = 'hand_raised' THEN 1 END) as hands_raised
-                FROM {bigbluebuttonbn_logs} bl
-                JOIN {bigbluebuttonbn} bbb ON bl.bigbluebuttonbnid = bbb.id
-                WHERE bbb.course = :courseid AND bl.userid $usql
-                GROUP BY bl.userid, bl.bigbluebuttonbnid, bl.meetingid";
-        
-        $bbb_data = $DB->get_records_sql($sql, $uparams + ['courseid' => $courseid]);
-        foreach ($bbb_data as $bbb) {
-            $analytics[$bbb->userid]['live_sessions']['bigbluebutton'][$bbb->bigbluebuttonbnid] = array(
-                'sessions_attended' => $bbb->sessions_attended,
-                'total_minutes' => $bbb->total_minutes,
-                'punctuality_rate' => round($bbb->punctuality_rate * 100, 2),
-                'polls_answered' => $bbb->polls_answered,
-                'hands_raised' => $bbb->hands_raised
+
+    // Prefer the standard log store for broad compatibility across BBB versions.
+    if ($DB->get_manager()->table_exists('logstore_standard_log')) {
+        // Count BigBlueButton meeting join events per user in this course.
+        $sql = "SELECT l.userid, COUNT(1) AS sessions_attended
+                  FROM {logstore_standard_log} l
+                 WHERE l.courseid = :courseid
+                   AND l.userid $usql
+                   AND l.component = 'mod_bigbluebuttonbn'
+                   AND l.eventname = '\\mod_bigbluebuttonbn\\event\\meeting_joined'
+              GROUP BY l.userid";
+
+        $bbbdata = $DB->get_records_sql($sql, ['courseid' => $courseid] + $uparams);
+        foreach ($bbbdata as $row) {
+            $uid = (int)$row->userid;
+            // Use a single aggregated bucket since per-instance aggregation is not essential here.
+            $analytics[$uid]['live_sessions']['bigbluebutton']['aggregate'] = array(
+                'sessions_attended' => (int)$row->sessions_attended,
+                'total_minutes' => 0,            // Not reliably available across installs
+                'punctuality_rate' => 0,         // Requires join-time/meeting-time correlation
+                'polls_answered' => 0,           // Not consistently logged
+                'hands_raised' => 0              // Not consistently logged
             );
         }
     }
