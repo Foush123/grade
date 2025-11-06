@@ -234,7 +234,8 @@ function gradereport_user_get_report_link(context_course $context, int $courseid
     global $CFG;
 
     if ($mode == 'user') {
-        $reportstring = get_string('userreport_' . $mode, 'gradereport_user');
+        // Use existing plugin name string; avoid dynamic, non-existent identifiers.
+        $reportstring = get_string('pluginname', 'gradereport_user');
 
         if (!isset($templatecontext)) {
             $templatecontext = new stdClass();

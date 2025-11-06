@@ -2982,7 +2982,8 @@ function gradereport_grader_get_attendance_analytics($courseid, $userids, &$anal
     list($usql, $uparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'users');
     
     // Course module completion as attendance proxy
-    $sql = "SELECT cmc.userid, cm.id as cmid, cm.instance, m.name as modulename,
+    // Ensure the first selected column is unique for get_records_sql keying
+    $sql = "SELECT CONCAT(cmc.userid, '-', cm.id) AS uniqkey, cmc.userid, cm.id as cmid, cm.instance, m.name as modulename,
                    COUNT(CASE WHEN cmc.completionstate = 1 THEN 1 END) as attended_count,
                    COUNT(cm.id) as total_sessions,
                    MAX(cmc.timemodified) as last_attendance
@@ -3186,7 +3187,8 @@ function gradereport_grader_get_ta_evaluation_analytics($courseid, $userids, &$a
     list($usql, $uparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'users');
     
     // TA ratings (if custom field exists or using gradebook comments)
-    $sql = "SELECT g.userid, gi.iteminstance, gi.itemmodule,
+    // Ensure the first selected column is unique for get_records_sql keying
+    $sql = "SELECT CONCAT(g.userid, '-', gi.iteminstance, '-', gi.itemmodule) AS uniqkey, g.userid, gi.iteminstance, gi.itemmodule,
                    AVG(g.finalgrade) as avg_ta_rating,
                    COUNT(CASE WHEN g.feedback IS NOT NULL AND LENGTH(g.feedback) > 0 THEN 1 END) as feedback_count,
                    AVG(LENGTH(g.feedback)) as avg_feedback_length
@@ -3199,9 +3201,9 @@ function gradereport_grader_get_ta_evaluation_analytics($courseid, $userids, &$a
     foreach ($ta_data as $ta) {
         $analytics[$ta->userid]['ta_evaluation'][$ta->iteminstance] = array(
             'module' => $ta->itemmodule,
-            'avg_ta_rating' => round($ta->avg_ta_rating, 2),
-            'feedback_count' => $ta->feedback_count,
-            'avg_feedback_length' => round($ta->avg_feedback_length, 2)
+            'avg_ta_rating' => round((float)($ta->avg_ta_rating ?? 0), 2),
+            'feedback_count' => (int)($ta->feedback_count ?? 0),
+            'avg_feedback_length' => round((float)($ta->avg_feedback_length ?? 0), 2)
         );
     }
 }

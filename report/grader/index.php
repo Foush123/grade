@@ -235,7 +235,7 @@ if ($export === 'csv') {
     $assigndue = $DB->get_records_sql($sql, ['courseid' => $courseid]);
     if (!empty($assigndue)) {
         list($cmsql, $cmparams) = $DB->get_in_or_equal(array_keys($assigndue), SQL_PARAMS_NAMED, 'cmA');
-        $sql = "SELECT cmc.userid, cmc.coursemoduleid cmid, cmc.completionstate
+        $sql = "SELECT CONCAT(cmc.userid, '-', cmc.coursemoduleid) AS uniqkey, cmc.userid, cmc.coursemoduleid cmid, cmc.completionstate
                   FROM {course_modules_completion} cmc
                  WHERE cmc.coursemoduleid $cmsql AND cmc.userid $usql";
         $cmcomp = $DB->get_records_sql($sql, $cmparams + $uparams);
@@ -270,7 +270,7 @@ if ($export === 'csv') {
     $quizdue = $DB->get_records_sql($sql, ['courseid' => $courseid]);
     if (!empty($quizdue)) {
         list($cmsql, $cmparams) = $DB->get_in_or_equal(array_keys($quizdue), SQL_PARAMS_NAMED, 'cmQ');
-        $sql = "SELECT cmc.userid, cmc.coursemoduleid cmid, cmc.completionstate
+        $sql = "SELECT CONCAT(cmc.userid, '-', cmc.coursemoduleid) AS uniqkey, cmc.userid, cmc.coursemoduleid cmid, cmc.completionstate
                   FROM {course_modules_completion} cmc
                  WHERE cmc.coursemoduleid $cmsql AND cmc.userid $usql";
         $cmcomp = $DB->get_records_sql($sql, $cmparams + $uparams);
@@ -293,19 +293,28 @@ if ($export === 'csv') {
     $quizstats = [];
     $quizzes = [];
     if ($DB->get_manager()->table_exists('quiz')) {
-        $sql = "SELECT q.id quizid, q.course, q.sumgrades, q.grade FROM {quiz} q WHERE q.course = :courseid";
+        $sql = "SELECT q.id quizid, q.course, q.sumgrades, q.grade, q.attempts FROM {quiz} q WHERE q.course = :courseid";
         $quizzes = $DB->get_records_sql($sql, ['courseid' => $courseid]);
     }
     if (!empty($quizzes) && $DB->get_manager()->table_exists('quiz_grades') && $DB->get_manager()->table_exists('quiz_attempts')) {
         list($usqll, $uparamsl) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'uq');
         $quizids = array_keys($quizzes);
         list($qsql, $qparams) = $DB->get_in_or_equal($quizids, SQL_PARAMS_NAMED, 'qid');
-        // Best final grade per user per quiz from quiz_grades.
-        $grades = $DB->get_records_sql("SELECT userid, quiz, grade FROM {quiz_grades} WHERE userid $usqll AND quiz $qsql", $uparamsl + $qparams);
-        // Attempts count and avg time.
-        $attempts = $DB->get_records_sql("SELECT userid, quiz, COUNT(1) cnt, AVG(NULLIF(timefinish - timestart,0)) avgdur FROM {quiz_attempts} WHERE userid $usqll AND quiz $qsql AND state='finished' GROUP BY userid, quiz", $uparamsl + $qparams);
-        // First attempt accuracy per quiz (attempt=1 finished).
-        $firstacc = $DB->get_records_sql("SELECT userid, quiz, AVG(NULLIF(sumgrades,0)) avg_sumgrades FROM {quiz_attempts} WHERE userid $usqll AND quiz $qsql AND state='finished' AND attempt = 1 GROUP BY userid, quiz", $uparamsl + $qparams);
+        // Best final grade per user per quiz from quiz_grades. Ensure unique first column for keying.
+        $grades = $DB->get_records_sql(
+            "SELECT CONCAT(userid, '-', quiz) AS uniqkey, userid, quiz, grade FROM {quiz_grades} WHERE userid $usqll AND quiz $qsql",
+            $uparamsl + $qparams
+        );
+        // Attempts count and avg time. Ensure unique first column for keying.
+        $attempts = $DB->get_records_sql(
+            "SELECT CONCAT(userid, '-', quiz) AS uniqkey, userid, quiz, COUNT(1) cnt, AVG(NULLIF(timefinish - timestart,0)) avgdur FROM {quiz_attempts} WHERE userid $usqll AND quiz $qsql AND state='finished' GROUP BY userid, quiz",
+            $uparamsl + $qparams
+        );
+        // First attempt accuracy per quiz (attempt=1 finished). Ensure unique first column for keying.
+        $firstacc = $DB->get_records_sql(
+            "SELECT CONCAT(userid, '-', quiz) AS uniqkey, userid, quiz, AVG(NULLIF(sumgrades,0)) avg_sumgrades FROM {quiz_attempts} WHERE userid $usqll AND quiz $qsql AND state='finished' AND attempt = 1 GROUP BY userid, quiz",
+            $uparamsl + $qparams
+        );
         // Allowed attempts per quiz (0 = unlimited).
         $allowed = [];
         foreach ($quizzes as $qid => $q) { $allowed[$qid] = (int)$q->attempts; }
@@ -369,12 +378,18 @@ if ($export === 'csv') {
         $DB->get_manager()->table_exists('assign_submission') && $DB->get_manager()->table_exists('assign')) {
         $giids = array_keys($assignitems);
         list($gisql, $giparams) = $DB->get_in_or_equal($giids, SQL_PARAMS_NAMED, 'gi');
-        // Grades percent.
-        $grades = $DB->get_records_sql("SELECT userid, itemid, finalgrade FROM {grade_grades} WHERE userid $usql AND itemid $gisql", $uparams + $giparams);
+        // Grades percent. Ensure unique first column for keying.
+        $grades = $DB->get_records_sql(
+            "SELECT CONCAT(userid, '-', itemid) AS uniqkey, userid, itemid, finalgrade FROM {grade_grades} WHERE userid $usql AND itemid $gisql",
+            $uparams + $giparams
+        );
         // Submissions.
         $assignids = array_map(function($r){return $r->assignid;}, $assignitems);
         list($asql, $aparams) = $DB->get_in_or_equal($assignids, SQL_PARAMS_NAMED, 'as');
-        $subs = $DB->get_records_sql("SELECT userid, assignment, COUNT(1) cnt, SUM(CASE WHEN attemptnumber>0 THEN 1 ELSE 0 END) resub FROM {assign_submission} WHERE userid $usql AND assignment $asql GROUP BY userid, assignment", $uparams + $aparams);
+        $subs = $DB->get_records_sql(
+            "SELECT CONCAT(userid, '-', assignment) AS uniqkey, userid, assignment, COUNT(1) cnt, SUM(CASE WHEN attemptnumber>0 THEN 1 ELSE 0 END) resub FROM {assign_submission} WHERE userid $usql AND assignment $asql GROUP BY userid, assignment",
+            $uparams + $aparams
+        );
         $assignrecords = $DB->get_records_sql("SELECT id, duedate FROM {assign} WHERE id $asql", $aparams);
         foreach ($userids as $uid) {
             $sumgradepct = 0; $gradecount = 0; $ontime = 0; $subcount = 0; $resub = 0;
@@ -394,7 +409,7 @@ if ($export === 'csv') {
             }
             // On-time: count latest submissions before duedate.
             $ontimecount = 0; $eligible = 0;
-            $latest = $DB->get_records_sql("SELECT s.userid, s.assignment, MAX(s.timecreated) t
+            $latest = $DB->get_records_sql("SELECT CONCAT(s.userid, '-', s.assignment) AS uniqkey, s.userid, s.assignment, MAX(s.timecreated) t
                                               FROM {assign_submission} s
                                              WHERE s.userid $usql AND s.assignment $asql
                                           GROUP BY s.userid, s.assignment", $uparams + $aparams);
